@@ -3,7 +3,7 @@ import "dotenv/config";
 import { AlertStore } from "./alert-store.js";
 import { loadConfig } from "./config.js";
 import { O1Client } from "./o1-client.js";
-import { runPoll } from "./poll.js";
+import { calculateNextPollDelay, runPoll } from "./poll.js";
 import { ConsoleNotifier, TelegramNotifier } from "./telegram.js";
 
 const config = loadConfig();
@@ -34,6 +34,7 @@ try {
   });
 
   do {
+    const pollStartedAt = Date.now();
     const summary = await runPoll({
       chainIds: config.chainIds,
       rules: config.rules,
@@ -45,7 +46,7 @@ try {
     console.info("Poll complete", summary);
 
     if (!config.runOnce && !stopping) {
-      await wait(config.pollIntervalMs);
+      await wait(calculateNextPollDelay(pollStartedAt, Date.now(), config.pollIntervalMs));
     }
   } while (!config.runOnce && !stopping);
 } finally {
@@ -56,12 +57,9 @@ function createNotifier() {
   if (config.dryRun) {
     return new ConsoleNotifier();
   }
-  if (config.telegramBotToken === undefined || config.telegramChatId === undefined) {
-    throw new Error("Telegram credentials are required in live mode");
-  }
   return new TelegramNotifier({
-    botToken: config.telegramBotToken,
-    chatId: config.telegramChatId,
+    botToken: /** @type {string} */ (config.telegramBotToken),
+    chatId: /** @type {string} */ (config.telegramChatId),
   });
 }
 

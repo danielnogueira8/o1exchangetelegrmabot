@@ -14,6 +14,11 @@ export function loadConfig(environment = process.env) {
   if (!dryRun && telegramChatId === undefined) {
     throw new Error("TELEGRAM_CHAT_ID is required when DRY_RUN is false");
   }
+  const pollIntervalSeconds = parseNumber(environment.POLL_INTERVAL_SECONDS, 60, {
+    name: "POLL_INTERVAL_SECONDS",
+    minimum: 30,
+    maximum: 60,
+  });
 
   return {
     o1ApiKey: requiredString(environment.O1_API_KEY, "O1_API_KEY"),
@@ -39,11 +44,7 @@ export function loadConfig(environment = process.env) {
         minimum: 0,
       }),
     }),
-    pollIntervalMs:
-      parseNumber(environment.POLL_INTERVAL_SECONDS, 60, {
-        name: "POLL_INTERVAL_SECONDS",
-        minimum: 1,
-      }) * 1_000,
+    pollIntervalMs: pollIntervalSeconds * 1_000,
     sqlitePath: optionalString(environment.SQLITE_PATH) ?? "./data/alerts.sqlite",
     dryRun,
     runOnce: parseBoolean(environment.RUN_ONCE, false, "RUN_ONCE"),
@@ -89,14 +90,17 @@ function parseBoolean(value, fallback, name) {
 /**
  * @param {string | undefined} value
  * @param {number} fallback
- * @param {{ name: string, minimum: number }} options
+ * @param {{ name: string, minimum: number, maximum?: number }} options
  */
-function parseNumber(value, fallback, { name, minimum }) {
+function parseNumber(value, fallback, { name, minimum, maximum }) {
   if (value === undefined || value.trim() === "") {
     return fallback;
   }
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < minimum) {
+  if (!Number.isFinite(parsed) || parsed < minimum || (maximum !== undefined && parsed > maximum)) {
+    if (maximum !== undefined) {
+      throw new Error(`${name} must be between ${minimum} and ${maximum}`);
+    }
     throw new Error(`${name} must be a number greater than or equal to ${minimum}`);
   }
   return parsed;

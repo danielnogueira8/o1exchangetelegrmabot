@@ -15,6 +15,7 @@ export function matchesAlertRules(token, rules, now = new Date()) {
 
   return (
     Number.isFinite(createdAt) &&
+    ageHours >= 0 &&
     ageHours <= rules.maximumAgeHours &&
     token.market_data?.data_status === "fresh" &&
     typeof marketCapUsd === "number" &&

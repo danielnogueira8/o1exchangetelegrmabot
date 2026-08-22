@@ -1,39 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runPoll } from "../src/poll.js";
+import { calculateNextPollDelay, runPoll } from "../src/poll.js";
+import { NOW, qualifyingToken, rules } from "../test-support/fixtures.js";
 
-const NOW = new Date("2026-08-22T12:00:00.000Z");
-
-function qualifyingToken() {
-  return {
-    chain_id: 8453,
-    token: { address: "0x1234", name: "Example Token", symbol: "EXAMPLE" },
-    launch: {
-      created_at: "2026-08-22T10:00:00.000Z",
-      pool_id: "0xabcd",
-      creator_address: "0xcreator",
-    },
-    market_data: {
-      data_status: "fresh",
-      market_cap: { usd: 150_000 },
-      liquidity: { usd: 25_000 },
-      activity: {
-        "1h": { trades: 30, volume_usd: 12_000 },
-        "6h": { trades: 80, volume_usd: 30_000 },
-        "24h": { trades: 80, volume_usd: 30_000 },
-      },
-      price: { usd: 0.0015 },
-    },
-  };
-}
-
-const rules = {
-  maximumAgeHours: 6,
-  minimumMarketCapUsd: 100_000,
-  minimumLiquidityUsd: 10_000,
-  minimumOneHourTrades: 20,
-};
+test("the next poll is scheduled from the previous poll's start time", () => {
+  assert.equal(calculateNextPollDelay(1_000, 11_000, 60_000), 50_000);
+  assert.equal(calculateNextPollDelay(1_000, 71_000, 60_000), 0);
+});
 
 test("one poll sends and records an unseen qualifying token", async () => {
   /** @type {string[]} */

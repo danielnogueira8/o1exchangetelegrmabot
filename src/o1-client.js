@@ -5,13 +5,7 @@ export class O1Client {
   #apiKey;
 
   /** @type {string} */
-  #baseUrl;
-
-  /** @type {string} */
   #market;
-
-  /** @type {number} */
-  #limit;
 
   /** @type {typeof fetch} */
   #fetch;
@@ -19,33 +13,27 @@ export class O1Client {
   /**
    * @param {{
    *   apiKey: string,
-   *   baseUrl?: string,
    *   market?: string,
-   *   limit?: number,
    *   fetchImpl?: typeof fetch
    * }} options
    */
   constructor({
     apiKey,
-    baseUrl = "https://api.launch.o1.exchange",
     market = "all",
-    limit = 100,
     fetchImpl = fetch,
   }) {
     this.#apiKey = apiKey;
-    this.#baseUrl = baseUrl;
     this.#market = market;
-    this.#limit = limit;
     this.#fetch = fetchImpl;
   }
 
   /** @param {number} chainId */
   async listTokens(chainId) {
-    const url = new URL("/v1/tokens", this.#baseUrl);
+    const url = new URL("https://api.launch.o1.exchange/v1/tokens");
     url.searchParams.set("chain_id", String(chainId));
     url.searchParams.set("market", this.#market);
     url.searchParams.set("sort", "newest");
-    url.searchParams.set("limit", String(this.#limit));
+    url.searchParams.set("limit", "100");
 
     const response = await this.#fetch(url, {
       headers: {

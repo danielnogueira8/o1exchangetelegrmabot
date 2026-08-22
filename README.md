@@ -60,7 +60,7 @@ The first live poll sends every qualifying token in the newest-100 window that i
 | `MINIMUM_MARKET_CAP_USD` | `100000` | Minimum USD market cap |
 | `MINIMUM_LIQUIDITY_USD` | `10000` | Minimum USD liquidity |
 | `MINIMUM_1H_TRADES` | `20` | Minimum number of trades in the last hour |
-| `POLL_INTERVAL_SECONDS` | `60` | Delay between completed polls |
+| `POLL_INTERVAL_SECONDS` | `60` | Start-to-start cadence (30–60 seconds) |
 | `SQLITE_PATH` | `./data/alerts.sqlite` | Persistent alert database |
 | `DRY_RUN` | `false` | Print alerts without Telegram or persistence |
 | `RUN_ONCE` | `false` | Poll once and exit |

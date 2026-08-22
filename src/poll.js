@@ -4,6 +4,16 @@ import { matchesAlertRules } from "./token-rules.js";
 /** @typedef {import("./types.js").AlertRules} AlertRules */
 
 /**
+ * @param {number} pollStartedAt
+ * @param {number} pollFinishedAt
+ * @param {number} intervalMs
+ */
+export function calculateNextPollDelay(pollStartedAt, pollFinishedAt, intervalMs) {
+  const elapsedMs = Math.max(0, pollFinishedAt - pollStartedAt);
+  return Math.max(0, intervalMs - elapsedMs);
+}
+
+/**
  * @param {{
  *   chainIds: number[],
  *   rules: AlertRules,

@@ -44,3 +44,17 @@ test("live mode requires both Telegram credentials", () => {
     /TELEGRAM_CHAT_ID is required when DRY_RUN is false/,
   );
 });
+
+test("polling must stay within the requested 30-to-60-second window", () => {
+  for (const pollInterval of ["29", "61"]) {
+    assert.throws(
+      () =>
+        loadConfig({
+          O1_API_KEY: "test-o1-key",
+          DRY_RUN: "true",
+          POLL_INTERVAL_SECONDS: pollInterval,
+        }),
+      /POLL_INTERVAL_SECONDS must be between 30 and 60/,
+    );
+  }
+});
