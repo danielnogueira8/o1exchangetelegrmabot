@@ -1,0 +1,13 @@
+services:
+  bot:
+    build: .
+    env_file:
+      - .env
+    environment:
+      SQLITE_PATH: /app/data/alerts.sqlite
+    restart: unless-stopped
+    volumes:
+      - o1-alert-data:/app/data
+
+volumes:
+  o1-alert-data:
