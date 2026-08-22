@@ -1,10 +1,11 @@
 import { RedisAlertStore } from "./redis-alert-store.js";
 import { loadConfig } from "./config.js";
+import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
 import { runPoll } from "./poll.js";
-import { ConsoleNotifier, TelegramNotifier } from "./telegram.js";
+import { RedisPollLock } from "./redis-poll-lock.js";
 
-/** @typedef {import("./redis-alert-store.js").RedisClient} RedisClient */
+/** @typedef {import("./redis-client.js").RedisClient} RedisClient */
 /** @typedef {import("./types.js").O1Token} O1Token */
 
 /**
@@ -36,9 +37,17 @@ export function createCronHandler({
       return Response.json({ ok: false, error: "unauthorized" }, { status: 401 });
     }
 
+    /** @type {RedisPollLock | undefined} */
+    let pollLock;
+    /** @type {string | null} */
+    let lockOwner = null;
+
     try {
-      const alertStore = new RedisAlertStore(createRedis());
-      if (!(await alertStore.tryAcquirePollLock())) {
+      const redis = createRedis();
+      const alertStore = new RedisAlertStore(redis);
+      pollLock = new RedisPollLock(redis);
+      lockOwner = await pollLock.tryAcquire();
+      if (lockOwner === null) {
         logger.info("Skipping overlapping Vercel cron invocation");
         return Response.json({ ok: true, skipped: true, reason: "already-running" });
       }
@@ -62,20 +71,14 @@ export function createCronHandler({
     } catch (error) {
       logger.error("Vercel cron poll failed", { error });
       return Response.json({ ok: false, error: "poll-failed" }, { status: 500 });
+    } finally {
+      if (pollLock !== undefined && lockOwner !== null) {
+        try {
+          await pollLock.release(lockOwner);
+        } catch (error) {
+          logger.error("Failed to release Vercel poll lock", { error });
+        }
+      }
     }
   };
-}
-
-/**
- * @param {ReturnType<typeof loadConfig>} config
- * @param {{ info(...values: unknown[]): void }} logger
- */
-function createNotifier(config, logger) {
-  if (config.dryRun) {
-    return new ConsoleNotifier({ logger });
-  }
-  return new TelegramNotifier({
-    botToken: /** @type {string} */ (config.telegramBotToken),
-    chatId: /** @type {string} */ (config.telegramChatId),
-  });
 }

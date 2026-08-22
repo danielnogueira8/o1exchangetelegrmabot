@@ -1,6 +1,6 @@
 # o1 Exchange Telegram Bot
 
-A small Node.js service that watches new o1 Launchpad pairs and sends one Telegram alert per qualifying pair. It polls the official o1 API, applies configurable thresholds, and stores delivered alerts so restarts do not create duplicates. Local and Docker runs use SQLite; Vercel uses Upstash Redis.
+A small Node.js service that watches new o1 Launchpad pairs and sends one Telegram alert per qualifying pair. It polls the official o1 API, applies configurable thresholds, and stores alert identities so restarts do not create duplicates. Local and Docker runs use SQLite; Vercel uses Upstash Redis.
 
 ## Default behavior
 
@@ -9,7 +9,8 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 - Requires a launch age of less than 24 hours
 - Requires fresh market data
 - Requires either at least $10,000 in 24-hour USD volume or a $50,000 market cap
-- Records an alert only after Telegram confirms delivery
+- Atomically claims each alert before delivery so overlapping or retried runs cannot send duplicates
+- Keeps an alert claimed after an ambiguous Telegram failure, favoring no duplicate message over an automatic retry
 - Keeps polling other chains and tokens when one request fails
 - Retries temporary o1 rate limits and server errors
 

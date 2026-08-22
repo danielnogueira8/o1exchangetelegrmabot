@@ -24,11 +24,14 @@ test("the Vercel cron endpoint skips an overlapping invocation", async () => {
     environment: { CRON_SECRET: "test-cron-secret" },
     createRedis() {
       return {
-        async exists() {
-          return 0;
-        },
         async set() {
           return null;
+        },
+        async del() {
+          return 0;
+        },
+        async eval() {
+          return 0;
         },
       };
     },
@@ -53,6 +56,10 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
   const recordedKeys = [];
   /** @type {string[]} */
   const sentAddresses = [];
+  /** @type {string | undefined} */
+  let lockOwner;
+  /** @type {string | undefined} */
+  let releasedOwner;
   const GET = createCronHandler({
     environment: {
       CRON_SECRET: "test-cron-secret",
@@ -63,14 +70,21 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
     },
     createRedis() {
       return {
-        async exists() {
-          return 0;
-        },
-        async set(key) {
-          if (key !== "o1:poll-lock") {
+        async set(key, value) {
+          if (key === "o1:poll-lock") {
+            lockOwner = value;
+          } else {
             recordedKeys.push(key);
           }
           return "OK";
+        },
+        async del() {
+          return 1;
+        },
+        /** @param {string} _script @param {string[]} _keys @param {string[]} args */
+        async eval(_script, _keys, args) {
+          releasedOwner = args[0];
+          return lockOwner === releasedOwner ? 1 : 0;
         },
       };
     },
@@ -99,6 +113,8 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(sentAddresses, ["0x1234"]);
   assert.deepEqual(recordedKeys, ["o1:alerts:8453:0x1234"]);
+  assert.ok(lockOwner);
+  assert.equal(releasedOwner, lockOwner);
   assert.deepEqual(await response.json(), {
     ok: true,
     summary: {
@@ -109,4 +125,46 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
       errors: 0,
     },
   });
+});
+
+test("the Vercel cron endpoint releases its owned lock when polling fails", async () => {
+  let releaseCalls = 0;
+  /** @type {string | undefined} */
+  let lockOwner;
+  const GET = createCronHandler({
+    environment: {
+      CRON_SECRET: "test-cron-secret",
+      O1_API_KEY: "test-o1-key",
+      DRY_RUN: "true",
+    },
+    createRedis() {
+      return {
+        async set(_key, value) {
+          lockOwner = value;
+          return "OK";
+        },
+        async del() {
+          return 1;
+        },
+        /** @param {string} _script @param {string[]} _keys @param {string[]} args */
+        async eval(_script, _keys, args) {
+          releaseCalls += 1;
+          assert.equal(args[0], lockOwner);
+          return 1;
+        },
+      };
+    },
+    now() {
+      throw new Error("clock unavailable");
+    },
+    logger: { info() {}, error() {} },
+  });
+  const request = new Request("https://example.test/api/cron", {
+    headers: { authorization: "Bearer test-cron-secret" },
+  });
+
+  const response = await GET(request);
+
+  assert.equal(response.status, 500);
+  assert.equal(releaseCalls, 1);
 });

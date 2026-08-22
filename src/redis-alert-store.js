@@ -1,8 +1,12 @@
+/** @typedef {import("./redis-client.js").RedisClient} RedisClient */
+
+import { normalizeTokenAddress } from "./alert-identity.js";
+
 export class RedisAlertStore {
-  /** @type {RedisClient} */
+  /** @type {Pick<RedisClient, "set" | "del">} */
   #redis;
 
-  /** @param {RedisClient} redis */
+  /** @param {Pick<RedisClient, "set" | "del">} redis */
   constructor(redis) {
     this.#redis = redis;
   }
@@ -11,21 +15,17 @@ export class RedisAlertStore {
    * @param {number} chainId
    * @param {string} tokenAddress
    */
-  async hasAlert(chainId, tokenAddress) {
-    return (await this.#redis.exists(alertKey(chainId, tokenAddress))) === 1;
+  async claimAlert(chainId, tokenAddress) {
+    const result = await this.#redis.set(alertKey(chainId, tokenAddress), "1", { nx: true });
+    return result === "OK";
   }
 
   /**
    * @param {number} chainId
    * @param {string} tokenAddress
    */
-  async recordAlert(chainId, tokenAddress) {
-    await this.#redis.set(alertKey(chainId, tokenAddress), "1");
-  }
-
-  async tryAcquirePollLock() {
-    const result = await this.#redis.set("o1:poll-lock", "1", { nx: true, ex: 55 });
-    return result === "OK";
+  async releaseAlert(chainId, tokenAddress) {
+    await this.#redis.del(alertKey(chainId, tokenAddress));
   }
 }
 
@@ -34,12 +34,5 @@ export class RedisAlertStore {
  * @param {string} tokenAddress
  */
 function alertKey(chainId, tokenAddress) {
-  return `o1:alerts:${chainId}:${tokenAddress.trim().toLowerCase()}`;
+  return `o1:alerts:${chainId}:${normalizeTokenAddress(tokenAddress)}`;
 }
-
-/**
- * @typedef {{
- *   exists(key: string): Promise<number>,
- *   set(key: string, value: string, options?: { nx?: boolean, ex?: number }): Promise<unknown>
- * }} RedisClient
- */

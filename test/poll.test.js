@@ -25,16 +25,22 @@ test("one poll sends and records an unseen qualifying token", async () => {
     },
     notifier: {
       async sendTokenAlert(token) {
+        assert.equal(recordedAddresses.has(`8453:${token.token.address}`), true);
         sentAddresses.push(token.token.address);
         return true;
       },
     },
     alertStore: {
-      hasAlert(chainId, tokenAddress) {
-        return recordedAddresses.has(`${chainId}:${tokenAddress.toLowerCase()}`);
+      claimAlert(chainId, tokenAddress) {
+        const identity = `${chainId}:${tokenAddress.toLowerCase()}`;
+        if (recordedAddresses.has(identity)) {
+          return false;
+        }
+        recordedAddresses.add(identity);
+        return true;
       },
-      recordAlert(chainId, tokenAddress) {
-        recordedAddresses.add(`${chainId}:${tokenAddress.toLowerCase()}`);
+      releaseAlert(chainId, tokenAddress) {
+        recordedAddresses.delete(`${chainId}:${tokenAddress.toLowerCase()}`);
       },
     },
     logger: { info() {}, error() {} },
@@ -77,11 +83,16 @@ test("a failed chain does not prevent other chains from being checked", async ()
       },
     },
     alertStore: {
-      hasAlert(chainId, tokenAddress) {
-        return recordedAddresses.has(`${chainId}:${tokenAddress.toLowerCase()}`);
+      claimAlert(chainId, tokenAddress) {
+        const identity = `${chainId}:${tokenAddress.toLowerCase()}`;
+        if (recordedAddresses.has(identity)) {
+          return false;
+        }
+        recordedAddresses.add(identity);
+        return true;
       },
-      recordAlert(chainId, tokenAddress) {
-        recordedAddresses.add(`${chainId}:${tokenAddress.toLowerCase()}`);
+      releaseAlert(chainId, tokenAddress) {
+        recordedAddresses.delete(`${chainId}:${tokenAddress.toLowerCase()}`);
       },
     },
     logger: { info() {}, error() {} },
@@ -97,7 +108,7 @@ test("a failed chain does not prevent other chains from being checked", async ()
   });
 });
 
-test("a failed Telegram delivery is not recorded and later alerts continue", async () => {
+test("an ambiguous Telegram failure keeps its claim and later alerts continue", async () => {
   const firstToken = qualifyingToken();
   firstToken.token.address = "0xfirst";
   const secondToken = qualifyingToken();
@@ -122,17 +133,22 @@ test("a failed Telegram delivery is not recorded and later alerts continue", asy
       },
     },
     alertStore: {
-      hasAlert(chainId, tokenAddress) {
-        return recordedAddresses.has(`${chainId}:${tokenAddress}`);
+      claimAlert(chainId, tokenAddress) {
+        const identity = `${chainId}:${tokenAddress}`;
+        if (recordedAddresses.has(identity)) {
+          return false;
+        }
+        recordedAddresses.add(identity);
+        return true;
       },
-      recordAlert(chainId, tokenAddress) {
-        recordedAddresses.add(`${chainId}:${tokenAddress}`);
+      releaseAlert(chainId, tokenAddress) {
+        recordedAddresses.delete(`${chainId}:${tokenAddress}`);
       },
     },
     logger: { info() {}, error() {} },
   });
 
-  assert.deepEqual([...recordedAddresses], ["8453:0xsecond"]);
+  assert.deepEqual([...recordedAddresses], ["8453:0xfirst", "8453:0xsecond"]);
   assert.deepEqual(summary, {
     fetched: 2,
     qualified: 2,
@@ -161,11 +177,11 @@ test("an already-alerted token is not sent again", async () => {
       },
     },
     alertStore: {
-      hasAlert() {
-        return true;
+      claimAlert() {
+        return false;
       },
-      recordAlert() {
-        assert.fail("duplicate alert must not be recorded again");
+      releaseAlert() {
+        assert.fail("an existing claim must not be released");
       },
     },
     logger: { info() {}, error() {} },
@@ -181,8 +197,8 @@ test("an already-alerted token is not sent again", async () => {
   });
 });
 
-test("a dry-run preview is not recorded as delivered", async () => {
-  let recordCalls = 0;
+test("a dry-run preview releases its claim for a later live run", async () => {
+  let releaseCalls = 0;
 
   const summary = await runPoll({
     chainIds: [8453],
@@ -199,17 +215,17 @@ test("a dry-run preview is not recorded as delivered", async () => {
       },
     },
     alertStore: {
-      hasAlert() {
-        return false;
+      claimAlert() {
+        return true;
       },
-      recordAlert() {
-        recordCalls += 1;
+      releaseAlert() {
+        releaseCalls += 1;
       },
     },
     logger: { info() {}, error() {} },
   });
 
-  assert.equal(recordCalls, 0);
+  assert.equal(releaseCalls, 1);
   assert.deepEqual(summary, {
     fetched: 1,
     qualified: 1,
@@ -221,7 +237,7 @@ test("a dry-run preview is not recorded as delivered", async () => {
 
 test("one poll supports an asynchronous serverless alert store", async () => {
   let delivered = false;
-  let recorded = false;
+  let claimed = false;
 
   const summary = await runPoll({
     chainIds: [8453],
@@ -234,22 +250,24 @@ test("one poll supports an asynchronous serverless alert store", async () => {
     },
     notifier: {
       async sendTokenAlert() {
+        assert.equal(claimed, true);
         delivered = true;
         return true;
       },
     },
     alertStore: {
-      async hasAlert() {
-        return false;
+      async claimAlert() {
+        claimed = true;
+        return true;
       },
-      async recordAlert() {
-        recorded = true;
+      async releaseAlert() {
+        claimed = false;
       },
     },
     logger: { info() {}, error() {} },
   });
 
   assert.equal(delivered, true);
-  assert.equal(recorded, true);
+  assert.equal(claimed, true);
   assert.equal(summary.sent, 1);
 });

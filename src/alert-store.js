@@ -2,15 +2,17 @@ import Database from "better-sqlite3";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { normalizeTokenAddress } from "./alert-identity.js";
+
 export class AlertStore {
   /** @type {Database.Database} */
   #database;
 
   /** @type {Database.Statement<[number, string]>} */
-  #findAlert;
+  #insertAlert;
 
   /** @type {Database.Statement<[number, string]>} */
-  #insertAlert;
+  #deleteAlert;
 
   /** @param {string} filename */
   constructor(filename) {
@@ -29,39 +31,33 @@ export class AlertStore {
       )
     `);
 
-    this.#findAlert = this.#database.prepare(`
-      SELECT 1
-      FROM alerted_tokens
-      WHERE chain_id = ? AND token_address = ?
-    `);
     this.#insertAlert = this.#database.prepare(`
       INSERT OR IGNORE INTO alerted_tokens (chain_id, token_address)
       VALUES (?, ?)
     `);
+    this.#deleteAlert = this.#database.prepare(`
+      DELETE FROM alerted_tokens
+      WHERE chain_id = ? AND token_address = ?
+    `);
   }
 
   /**
    * @param {number} chainId
    * @param {string} tokenAddress
    */
-  hasAlert(chainId, tokenAddress) {
-    return this.#findAlert.get(chainId, normalizeAddress(tokenAddress)) !== undefined;
+  claimAlert(chainId, tokenAddress) {
+    return this.#insertAlert.run(chainId, normalizeTokenAddress(tokenAddress)).changes === 1;
   }
 
   /**
    * @param {number} chainId
    * @param {string} tokenAddress
    */
-  recordAlert(chainId, tokenAddress) {
-    this.#insertAlert.run(chainId, normalizeAddress(tokenAddress));
+  releaseAlert(chainId, tokenAddress) {
+    this.#deleteAlert.run(chainId, normalizeTokenAddress(tokenAddress));
   }
 
   close() {
     this.#database.close();
   }
-}
-
-/** @param {string} address */
-function normalizeAddress(address) {
-  return address.trim().toLowerCase();
 }

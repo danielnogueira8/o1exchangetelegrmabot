@@ -2,53 +2,80 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { RedisAlertStore } from "../src/redis-alert-store.js";
+import { RedisPollLock } from "../src/redis-poll-lock.js";
 
-test("RedisAlertStore persists a normalized chain and address identity", async () => {
+test("RedisAlertStore atomically claims a normalized chain and address identity", async () => {
   const keys = new Set();
   const store = new RedisAlertStore({
-    async exists(key) {
-      return keys.has(key) ? 1 : 0;
-    },
-    async set(key) {
+    async set(key, _value, options) {
+      if (options?.nx && keys.has(key)) {
+        return null;
+      }
       keys.add(key);
       return "OK";
     },
+    async del(key) {
+      return keys.delete(key) ? 1 : 0;
+    },
   });
 
-  assert.equal(await store.hasAlert(8453, "0xAbCd"), false);
-  await store.recordAlert(8453, "0xAbCd");
-  assert.equal(await store.hasAlert(8453, "0xabcd"), true);
+  assert.equal(await store.claimAlert(8453, "0xAbCd"), true);
+  assert.equal(await store.claimAlert(8453, "0xabcd"), false);
   assert.deepEqual([...keys], ["o1:alerts:8453:0xabcd"]);
+
+  await store.releaseAlert(8453, "0xABCD");
+  assert.equal(await store.claimAlert(8453, "0xabcd"), true);
 });
 
-test("the Vercel poll lock blocks overlapping or duplicate cron invocations", async () => {
+test("the Vercel poll lock uses unique ownership and releases only its own lock", async () => {
   /** @type {{ key: string, value: string, options: { nx?: boolean, ex?: number } | undefined }[]} */
-  const calls = [];
-  /** @type {string | null} */
-  let result = "OK";
-  const store = new RedisAlertStore({
-    async exists() {
-      return 0;
+  const setCalls = [];
+  /** @type {{ script: string, keys: string[], args: string[] }[]} */
+  const evalCalls = [];
+  /** @type {string | undefined} */
+  let lockOwner;
+  const lock = new RedisPollLock(
+    {
+      async set(key, value, options) {
+        setCalls.push({ key, value, options });
+        if (lockOwner !== undefined) {
+          return null;
+        }
+        lockOwner = value;
+        return "OK";
+      },
+      async eval(script, keys, args) {
+        evalCalls.push({ script, keys, args });
+        if (lockOwner !== args[0]) {
+          return 0;
+        }
+        lockOwner = undefined;
+        return 1;
+      },
     },
-    async set(key, value, options) {
-      calls.push({ key, value, options });
-      return result;
-    },
-  });
+    { createOwnerToken: () => "owner-1" },
+  );
 
-  assert.equal(await store.tryAcquirePollLock(), true);
-  result = null;
-  assert.equal(await store.tryAcquirePollLock(), false);
-  assert.deepEqual(calls, [
+  assert.equal(await lock.tryAcquire(), "owner-1");
+  assert.equal(await lock.tryAcquire(), null);
+  assert.equal(await lock.release("another-owner"), false);
+  assert.equal(await lock.release("owner-1"), true);
+  assert.deepEqual(setCalls, [
     {
       key: "o1:poll-lock",
-      value: "1",
+      value: "owner-1",
       options: { nx: true, ex: 55 },
     },
     {
       key: "o1:poll-lock",
-      value: "1",
+      value: "owner-1",
       options: { nx: true, ex: 55 },
     },
   ]);
+  assert.equal(evalCalls.length, 2);
+  assert.deepEqual(evalCalls.map(({ keys, args }) => ({ keys, args })), [
+    { keys: ["o1:poll-lock"], args: ["another-owner"] },
+    { keys: ["o1:poll-lock"], args: ["owner-1"] },
+  ]);
+  assert.match(evalCalls[0].script, /redis\.call\("get", KEYS\[1\]\)/);
 });

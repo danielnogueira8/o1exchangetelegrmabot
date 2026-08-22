@@ -1,5 +1,9 @@
 /** @typedef {import("./types.js").O1Token} O1Token */
 
+const MAX_REQUEST_ATTEMPTS = 3;
+const BASE_RETRY_DELAY_MS = 1_000;
+const MAX_RETRY_DELAY_MS = 5_000;
+
 export class O1Client {
   /** @type {string} */
   #apiKey;
@@ -35,7 +39,7 @@ export class O1Client {
     url.searchParams.set("sort", "newest");
     url.searchParams.set("limit", "100");
 
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt += 1) {
       const response = await this.#fetch(url, {
         headers: {
           accept: "application/json",
@@ -45,7 +49,7 @@ export class O1Client {
 
       if (!response.ok) {
         const retryable = response.status === 429 || response.status >= 500;
-        if (retryable && attempt < 2) {
+        if (retryable && attempt < MAX_REQUEST_ATTEMPTS - 1) {
           await delay(retryDelayMs(response.headers.get("retry-after"), attempt));
           continue;
         }
@@ -72,16 +76,16 @@ function retryDelayMs(retryAfter, attempt) {
   if (retryAfter !== null) {
     const seconds = Number(retryAfter);
     if (Number.isFinite(seconds) && seconds >= 0) {
-      return Math.min(seconds * 1_000, 5_000);
+      return Math.min(seconds * 1_000, MAX_RETRY_DELAY_MS);
     }
 
     const retryAt = Date.parse(retryAfter);
     if (Number.isFinite(retryAt)) {
-      return Math.min(Math.max(0, retryAt - Date.now()), 5_000);
+      return Math.min(Math.max(0, retryAt - Date.now()), MAX_RETRY_DELAY_MS);
     }
   }
 
-  return Math.min(1_000 * 2 ** attempt, 5_000);
+  return Math.min(BASE_RETRY_DELAY_MS * 2 ** attempt, MAX_RETRY_DELAY_MS);
 }
 
 /** @param {number} milliseconds */

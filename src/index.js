@@ -2,9 +2,9 @@ import "dotenv/config";
 
 import { AlertStore } from "./alert-store.js";
 import { loadConfig } from "./config.js";
+import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
 import { calculateNextPollDelay, runPoll } from "./poll.js";
-import { ConsoleNotifier, TelegramNotifier } from "./telegram.js";
 
 const config = loadConfig();
 const alertStore = new AlertStore(config.sqlitePath);
@@ -12,7 +12,7 @@ const o1Client = new O1Client({
   apiKey: config.o1ApiKey,
   market: config.market,
 });
-const notifier = createNotifier();
+const notifier = createNotifier(config);
 
 let stopping = false;
 /** @type {(() => void) | undefined} */
@@ -51,16 +51,6 @@ try {
   } while (!config.runOnce && !stopping);
 } finally {
   alertStore.close();
-}
-
-function createNotifier() {
-  if (config.dryRun) {
-    return new ConsoleNotifier();
-  }
-  return new TelegramNotifier({
-    botToken: /** @type {string} */ (config.telegramBotToken),
-    chatId: /** @type {string} */ (config.telegramChatId),
-  });
 }
 
 /** @param {number} milliseconds */
