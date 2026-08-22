@@ -1,10 +1,9 @@
 export const NOW = new Date("2026-08-22T12:00:00.000Z");
 
 export const rules = {
-  maximumAgeHours: 6,
-  minimumMarketCapUsd: 100_000,
-  minimumLiquidityUsd: 10_000,
-  minimumOneHourTrades: 20,
+  maximumAgeHours: 24,
+  minimumMarketCapUsd: 50_000,
+  minimum24HourVolumeUsd: 10_000,
 };
 
 export function qualifyingToken() {

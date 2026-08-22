@@ -36,8 +36,7 @@
  * @typedef {{
  *   maximumAgeHours: number,
  *   minimumMarketCapUsd: number,
- *   minimumLiquidityUsd: number,
- *   minimumOneHourTrades: number
+ *   minimum24HourVolumeUsd: number
  * }} AlertRules
  */
 

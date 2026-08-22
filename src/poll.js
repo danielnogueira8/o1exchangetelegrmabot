@@ -21,8 +21,8 @@ export function calculateNextPollDelay(pollStartedAt, pollFinishedAt, intervalMs
  *   o1Client: { listTokens(chainId: number): Promise<O1Token[]> },
  *   notifier: { sendTokenAlert(token: O1Token, now?: Date): Promise<boolean> },
  *   alertStore: {
- *     hasAlert(chainId: number, tokenAddress: string): boolean,
- *     recordAlert(chainId: number, tokenAddress: string): void
+ *     hasAlert(chainId: number, tokenAddress: string): boolean | Promise<boolean>,
+ *     recordAlert(chainId: number, tokenAddress: string): void | Promise<void>
  *   },
  *   logger: { info(...values: unknown[]): void, error(...values: unknown[]): void }
  * }} dependencies
@@ -64,7 +64,7 @@ export async function runPoll({
 
       summary.qualified += 1;
 
-      if (alertStore.hasAlert(token.chain_id, token.token.address)) {
+      if (await alertStore.hasAlert(token.chain_id, token.token.address)) {
         summary.alreadyAlerted += 1;
         continue;
       }
@@ -83,7 +83,7 @@ export async function runPoll({
       }
 
       if (delivered) {
-        alertStore.recordAlert(token.chain_id, token.token.address);
+        await alertStore.recordAlert(token.chain_id, token.token.address);
         summary.sent += 1;
       }
     }

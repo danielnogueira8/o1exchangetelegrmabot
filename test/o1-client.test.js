@@ -44,3 +44,26 @@ test("listTokens requests the newest 100 tokens for a chain", async () => {
   });
   assert.equal(new Headers(request.init?.headers).get("x-api-key"), "test-api-key");
 });
+
+test("listTokens retries a rate-limited request", async () => {
+  let requests = 0;
+  const client = new O1Client({
+    apiKey: "test-api-key",
+    fetchImpl: async () => {
+      requests += 1;
+      if (requests === 1) {
+        return new Response(JSON.stringify({ error: "rate limited" }), {
+          status: 429,
+          headers: { "retry-after": "0" },
+        });
+      }
+      return new Response(JSON.stringify({ data: [] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  assert.deepEqual(await client.listTokens(4663), []);
+  assert.equal(requests, 2);
+});

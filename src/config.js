@@ -27,20 +27,16 @@ export function loadConfig(environment = process.env) {
     chainIds: parseChainIds(environment.CHAIN_IDS ?? "8453,143,4663"),
     market: optionalString(environment.MARKET) ?? "all",
     rules: /** @type {AlertRules} */ ({
-      maximumAgeHours: parseNumber(environment.MAXIMUM_AGE_HOURS, 6, {
+      maximumAgeHours: parseNumber(environment.MAXIMUM_AGE_HOURS, 24, {
         name: "MAXIMUM_AGE_HOURS",
         minimum: 0,
       }),
-      minimumMarketCapUsd: parseNumber(environment.MINIMUM_MARKET_CAP_USD, 100_000, {
+      minimumMarketCapUsd: parseNumber(environment.MINIMUM_MARKET_CAP_USD, 50_000, {
         name: "MINIMUM_MARKET_CAP_USD",
         minimum: 0,
       }),
-      minimumLiquidityUsd: parseNumber(environment.MINIMUM_LIQUIDITY_USD, 10_000, {
-        name: "MINIMUM_LIQUIDITY_USD",
-        minimum: 0,
-      }),
-      minimumOneHourTrades: parseNumber(environment.MINIMUM_1H_TRADES, 20, {
-        name: "MINIMUM_1H_TRADES",
+      minimum24HourVolumeUsd: parseNumber(environment.MINIMUM_24H_VOLUME_USD, 10_000, {
+        name: "MINIMUM_24H_VOLUME_USD",
         minimum: 0,
       }),
     }),

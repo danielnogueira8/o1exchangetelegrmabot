@@ -16,10 +16,9 @@ test("dry-run configuration loads safe defaults without Telegram credentials", (
     chainIds: [8453, 143, 4663],
     market: "all",
     rules: {
-      maximumAgeHours: 6,
-      minimumMarketCapUsd: 100_000,
-      minimumLiquidityUsd: 10_000,
-      minimumOneHourTrades: 20,
+      maximumAgeHours: 24,
+      minimumMarketCapUsd: 50_000,
+      minimum24HourVolumeUsd: 10_000,
     },
     pollIntervalMs: 60_000,
     sqlitePath: "./data/alerts.sqlite",

@@ -218,3 +218,38 @@ test("a dry-run preview is not recorded as delivered", async () => {
     errors: 0,
   });
 });
+
+test("one poll supports an asynchronous serverless alert store", async () => {
+  let delivered = false;
+  let recorded = false;
+
+  const summary = await runPoll({
+    chainIds: [8453],
+    rules,
+    now: NOW,
+    o1Client: {
+      async listTokens() {
+        return [qualifyingToken()];
+      },
+    },
+    notifier: {
+      async sendTokenAlert() {
+        delivered = true;
+        return true;
+      },
+    },
+    alertStore: {
+      async hasAlert() {
+        return false;
+      },
+      async recordAlert() {
+        recorded = true;
+      },
+    },
+    logger: { info() {}, error() {} },
+  });
+
+  assert.equal(delivered, true);
+  assert.equal(recorded, true);
+  assert.equal(summary.sent, 1);
+});

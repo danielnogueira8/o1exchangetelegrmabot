@@ -35,6 +35,7 @@ function token() {
 test("the Telegram alert is readable and HTML-safe", () => {
   const message = formatTokenAlert(token(), NOW);
 
+  assert.match(message, /🚀 <b>New o1 pair<\/b>/);
   assert.match(message, /<b>Example &lt;Moon&gt; &amp; Co \(EX&amp;\)<\/b>/);
   assert.match(message, /Chain: Base/);
   assert.match(message, /Launched: 2h ago/);

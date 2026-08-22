@@ -88,7 +88,7 @@ export function formatTokenAlert(token, now = new Date()) {
   const chainName = CHAIN_NAMES.get(token.chain_id) ?? `Chain ${token.chain_id}`;
 
   return [
-    "🚀 <b>New o1 token</b>",
+    "🚀 <b>New o1 pair</b>",
     "",
     `<b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
     `Chain: ${escapeHtml(chainName)}`,
