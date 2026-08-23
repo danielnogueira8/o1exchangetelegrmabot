@@ -77,10 +77,23 @@ test("the Telegram alert identifies a known launch source", () => {
   const b20Token = /** @type {import("../src/types.js").O1Token} */ (token());
   b20Token.launch.source = "Base B20 Factory";
   delete b20Token.launch.creator_address;
+  b20Token.launch.alpha = {
+    factory_caller: "0xC7937601a50669d3B4725d01201335ba46bc149A",
+    factory_caller_type: "EOA",
+    prelaunch_eth: "1.2345",
+    initial_mint_recipients: 2,
+    largest_initial_mint_share_percent: 80,
+    admin_role_granted: false,
+  };
 
   const message = formatTokenAlert(b20Token, NOW);
 
   assert.match(message, /🏭 Launch source: Base B20 Factory/);
+  assert.match(message, /🧪 <b>Launch alpha<\/b>/);
+  assert.match(message, /Factory caller: <a href="https:\/\/debank.com\/profile\/0xC7937601a50669d3B4725d01201335ba46bc149A">/);
+  assert.match(message, /Pre-launch ETH: 1.2345 ETH/);
+  assert.match(message, /Initial mint: 2 recipients · largest 80%/);
+  assert.match(message, /Default admin grant in launch: no/);
   assert.doesNotMatch(message, /Creator:/);
 });
 
