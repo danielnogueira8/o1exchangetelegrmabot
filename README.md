@@ -5,7 +5,8 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 ## Default behavior
 
 - Polls Base (`8453`), Monad (`143`), and Robinhood Chain (`4663`)
-- Requests the newest 100 tokens per chain every 60 seconds
+- Requests the newest 100 tokens per chain on each poll
+- Uses GitHub Actions to trigger the Vercel production endpoint every five minutes
 - Requires a launch age of less than 24 hours
 - Requires fresh market data
 - Requires either at least $10,000 in 24-hour USD volume or a $50,000 market cap
@@ -79,9 +80,9 @@ npm run check
 
 This runs static type checking and the full behavior test suite.
 
-## Deploy on Vercel
+## Deploy on Vercel with GitHub Actions
 
-Vercel's one-minute cron schedule requires a **Pro or Enterprise plan**. Hobby cron jobs can run only once per day, so use an external scheduler if you need the intended alert speed without upgrading.
+Vercel hosts the app and GitHub Actions schedules it every five minutes at no extra cost. This public repository can use standard GitHub-hosted runners for free. This avoids Vercel Hobby's once-daily cron limit while keeping the application on Vercel. GitHub schedules are best-effort and can be delayed during periods of high load. GitHub disables scheduled workflows after 60 days without repository activity, so re-enable the workflow in Actions if the repository becomes inactive.
 
 1. Import this GitHub repository into Vercel.
 2. Create a Neon database and copy its pooled connection string.
@@ -93,8 +94,10 @@ Vercel's one-minute cron schedule requires a **Pro or Enterprise plan**. Hobby c
    - `DRY_RUN=false`
    - `CRON_SECRET` with a random value of at least 16 characters
 4. Deploy to Production.
+5. In the GitHub repository, add an Actions secret named `CRON_SECRET` with exactly the same value as the Vercel variable.
+6. Merge the workflow into the default branch. Scheduled GitHub workflows run from the default branch only.
 
-The included `vercel.json` invokes `/api/cron` every minute on eligible Vercel plans. The function verifies `CRON_SECRET`, obtains a short Postgres lock to prevent overlapping invocations, polls all configured chains, and uses Postgres for durable deduplication. Vercel only runs cron jobs for Production deployments.
+The included GitHub workflow calls `https://o1exchangetelegrmabot.vercel.app/api/cron` every five minutes with that secret. The Vercel function verifies it, obtains a short Postgres lock to prevent overlapping invocations, polls all configured chains, and uses Postgres for durable deduplication. You can test it after deployment from **Actions → Trigger Vercel token monitor → Run workflow**.
 
 Local `.env` values are never uploaded automatically; add secrets through the Vercel dashboard or CLI. The two required tables are created automatically on their first use.
 
