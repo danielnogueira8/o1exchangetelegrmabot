@@ -1,0 +1,48 @@
+name: Trigger Vercel token monitor
+
+on:
+  schedule:
+    # Start two minutes past the hour to avoid GitHub's busiest scheduling slot.
+    - cron: "2-59/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: trigger-vercel-token-monitor
+  cancel-in-progress: false
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - name: Trigger protected Vercel endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "$CRON_SECRET" ]]; then
+            echo "::error::Set the CRON_SECRET repository secret before running this workflow."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "$response_file"' EXIT
+          status="$(
+            curl \
+              --silent \
+              --show-error \
+              --retry 2 \
+              --retry-all-errors \
+              --connect-timeout 10 \
+              --max-time 55 \
+              --output "$response_file" \
+              --write-out "%{http_code}" \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              https://o1exchangetelegrmabot.vercel.app/api/cron
+          )"
+
+          cat "$response_file"
+          test "$status" = "200"
