@@ -10,14 +10,14 @@ function token() {
   return {
     chain_id: 8453,
     token: {
-      address: "0x<token>",
+      address: "0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3",
       name: "Example <Moon> & Co",
       symbol: "EX&",
     },
     launch: {
       created_at: "2026-08-22T10:00:00.000Z",
       pool_id: "0xpool",
-      creator_address: "0xcreator",
+      creator_address: "0xC7937601a50669d3B4725d01201335ba46bc149A",
     },
     market_data: {
       data_status: "fresh",
@@ -44,7 +44,17 @@ test("the Telegram alert is readable and HTML-safe", () => {
   assert.match(message, /Market cap: \$150,000/);
   assert.match(message, /Liquidity: \$25,000/);
   assert.match(message, /1h: 30 trades · \$12,000 volume/);
-  assert.match(message, /Token: <code>0x&lt;token&gt;<\/code>/);
+  assert.ok(
+    message.includes(
+      'Token: <a href="https://t.me/Sigma_buyBot?start=x699691974-0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3">0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3</a>',
+    ),
+  );
+  assert.ok(
+    message.includes(
+      'Creator: <a href="https://debank.com/profile/0xC7937601a50669d3B4725d01201335ba46bc149A">0xC7937601a50669d3B4725d01201335ba46bc149A</a>',
+    ),
+  );
+  assert.doesNotMatch(message, /Pool:/);
   assert.doesNotMatch(message, /Example <Moon>/);
 });
 
