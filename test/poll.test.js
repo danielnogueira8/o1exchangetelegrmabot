@@ -106,6 +106,61 @@ test("one poll enriches a new alert with optional token socials", async () => {
   assert.equal(summary.sent, 1);
 });
 
+test("stalled social lookups share one budget and fall back to base alerts", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
+  const firstToken = qualifyingToken();
+  const secondToken = qualifyingToken();
+  secondToken.token.address = "0x5678";
+  /** @type {AbortSignal | undefined} */
+  let detailsSignal;
+  let detailRequests = 0;
+  /** @type {string[]} */
+  const sentAddresses = [];
+
+  const polling = runPoll({
+    chainIds: [8453],
+    rules,
+    now: NOW,
+    o1Client: {
+      async listTokens() {
+        return [firstToken, secondToken];
+      },
+      async getTokenDetails(_chainId, _tokenAddress, options) {
+        detailRequests += 1;
+        detailsSignal = options?.signal;
+        return new Promise(() => {});
+      },
+    },
+    notifier: {
+      async sendTokenAlert(token) {
+        sentAddresses.push(token.token.address);
+        return "delivered";
+      },
+    },
+    alertStore: {
+      claimAlert() {
+        return true;
+      },
+      releaseAlert() {},
+    },
+    logger: { info() {}, error() {} },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(10_000);
+  const summary = await Promise.race([
+    polling,
+    new Promise((resolve) => setImmediate(() => resolve(undefined))),
+  ]);
+
+  assert.notEqual(summary, undefined, "the poll remained stalled");
+  assert.equal(detailRequests, 1);
+  assert.equal(detailsSignal?.aborted, true);
+  assert.deepEqual(sentAddresses, ["0x1234", "0x5678"]);
+  assert.equal(summary?.sent, 2);
+  assert.equal(summary?.errors, 1);
+});
+
 test("a failed chain does not prevent other chains from being checked", async () => {
   /** @type {string[]} */
   const sentAddresses = [];

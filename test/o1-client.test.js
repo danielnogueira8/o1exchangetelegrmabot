@@ -98,8 +98,11 @@ test("getTokenDetails requests the token resource used for optional socials", as
       });
     },
   });
+  const abortController = new AbortController();
 
-  const token = await client.getTokenDetails(8453, "0x1234");
+  const token = await client.getTokenDetails(8453, "0x1234", {
+    signal: abortController.signal,
+  });
 
   assert.deepEqual(token, expectedToken);
   assert.equal(requests.length, 1);
@@ -108,4 +111,5 @@ test("getTokenDetails requests the token resource used for optional socials", as
   assert.equal(url.pathname, "/v1/tokens/8453/0x1234");
   assert.deepEqual(Object.fromEntries(url.searchParams), { include: "market" });
   assert.equal(new Headers(request.init?.headers).get("x-api-key"), "test-api-key");
+  assert.equal(request.init?.signal, abortController.signal);
 });

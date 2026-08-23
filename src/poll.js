@@ -2,8 +2,11 @@ import { matchesAlertRules } from "./token-rules.js";
 import { NotificationRejectedError } from "./notification-error.js";
 
 /** @typedef {import("./types.js").O1Token} O1Token */
+/** @typedef {import("./types.js").O1ClientLike} O1ClientLike */
 /** @typedef {import("./types.js").AlertRules} AlertRules */
 /** @typedef {import("./types.js").DeliveryResult} DeliveryResult */
+
+const OPTIONAL_SOCIALS_BUDGET_MS = 5_000;
 
 /**
  * @param {number} pollStartedAt
@@ -20,10 +23,7 @@ export function calculateNextPollDelay(pollStartedAt, pollFinishedAt, intervalMs
  *   chainIds: number[],
  *   rules: AlertRules,
  *   now?: Date,
- *   o1Client: {
- *     listTokens(chainId: number): Promise<O1Token[]>,
- *     getTokenDetails?(chainId: number, tokenAddress: string): Promise<O1Token>
- *   },
+ *   o1Client: O1ClientLike,
  *   notifier: { sendTokenAlert(token: O1Token, now?: Date): Promise<DeliveryResult> },
  *   alertStore: {
  *     claimAlert(chainId: number, tokenAddress: string): boolean | Promise<boolean>,
@@ -41,6 +41,7 @@ export async function runPoll({
   alertStore,
   logger,
 }) {
+  const optionalSocialsDeadline = Date.now() + OPTIONAL_SOCIALS_BUDGET_MS;
   const summary = {
     fetched: 0,
     qualified: 0,
@@ -88,11 +89,19 @@ export async function runPoll({
       }
 
       let alertToken = token;
-      if (o1Client.getTokenDetails !== undefined) {
+      const optionalSocialsTimeLeft = optionalSocialsDeadline - Date.now();
+      if (
+        o1Client.getTokenDetails !== undefined &&
+        optionalSocialsTimeLeft > 0
+      ) {
+        const getTokenDetails = o1Client.getTokenDetails.bind(o1Client);
         try {
-          const details = await o1Client.getTokenDetails(
-            token.chain_id,
-            token.token.address,
+          const details = await withOptionalSocialsDeadline(
+            (signal) =>
+              getTokenDetails(token.chain_id, token.token.address, {
+                signal,
+              }),
+            optionalSocialsTimeLeft,
           );
           alertToken = withTokenSocials(token, details);
         } catch (error) {
@@ -132,6 +141,33 @@ export async function runPoll({
   }
 
   return summary;
+}
+
+/**
+ * @template T
+ * @param {(signal: AbortSignal) => Promise<T>} operation
+ * @param {number} timeoutMs
+ * @returns {Promise<T>}
+ */
+async function withOptionalSocialsDeadline(operation, timeoutMs) {
+  const abortController = new AbortController();
+  /** @type {ReturnType<typeof setTimeout> | undefined} */
+  let timeout;
+  const timeoutError = new Error(
+    `Optional token socials request timed out after ${timeoutMs}ms`,
+  );
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(() => {
+      abortController.abort(timeoutError);
+      reject(timeoutError);
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([operation(abortController.signal), deadline]);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /**

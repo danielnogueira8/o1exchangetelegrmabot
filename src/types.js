@@ -37,6 +37,15 @@
  * }} O1Token
  *
  * @typedef {{
+ *   listTokens: (chainId: number) => Promise<O1Token[]>,
+ *   getTokenDetails?: (
+ *     chainId: number,
+ *     tokenAddress: string,
+ *     options?: { signal?: AbortSignal }
+ *   ) => Promise<O1Token>
+ * }} O1ClientLike
+ *
+ * @typedef {{
  *   maximumAgeHours: number,
  *   minimumMarketCapUsd: number,
  *   minimum24HourVolumeUsd: number
