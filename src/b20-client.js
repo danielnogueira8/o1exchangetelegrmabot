@@ -7,6 +7,7 @@
  *   symbol: string,
  *   decimals: number,
  *   blockNumber: string,
+ *   transactionHash: string,
  *   blockTimestamp?: string
  * }} DecodedB20Launch
  */
@@ -37,6 +38,11 @@ const B20_CREATED_TOPIC =
 const B20_LOOKBACK_BLOCKS = 3_600;
 const DEXSCREENER_BATCH_SIZE = 30;
 const DEFAULT_MINIMUM_MARKET_CAP_USD = 100_000;
+const TRANSFER_TOPIC =
+  "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+const ROLE_GRANTED_TOPIC =
+  "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d";
+const ZERO_WORD = `0x${"0".repeat(64)}`;
 
 export class B20Client {
   /** @type {string} */
@@ -105,15 +111,68 @@ export class B20Client {
     }
 
     const pairs = await this.#listPairs(launches.map((launch) => launch.address));
-    return launches
-      .map((launch) =>
-        tokenFromLaunch(
-          launch,
-          pairs.get(launch.address.toLowerCase()),
-          this.#minimumMarketCapUsd,
-        ),
-      )
-      .filter((token) => token !== undefined);
+    /** @type {{ launch: DecodedB20Launch, token: O1Token }[]} */
+    const candidates = [];
+    for (const launch of launches) {
+      const token = tokenFromLaunch(
+        launch,
+        pairs.get(launch.address.toLowerCase()),
+        this.#minimumMarketCapUsd,
+      );
+      if (token !== undefined) {
+        candidates.push({ launch, token });
+      }
+    }
+
+    return Promise.all(
+      candidates.map(async ({ launch, token }) => {
+        try {
+          return await this.#withLaunchAlpha(token, launch);
+        } catch {
+          return token;
+        }
+      }),
+    );
+  }
+
+  /** @param {O1Token} token @param {DecodedB20Launch} launch */
+  async #withLaunchAlpha(token, launch) {
+    const transaction = await this.#rpc("eth_getTransactionByHash", [launch.transactionHash]);
+    if (
+      transaction === null ||
+      typeof transaction !== "object" ||
+      !("from" in transaction) ||
+      typeof transaction.from !== "string"
+    ) {
+      return token;
+    }
+
+    const caller = transaction.from;
+    const previousBlock = previousBlockTag(launch.blockNumber);
+    const [codeResult, balanceResult, receiptResult] = await Promise.allSettled([
+      this.#rpc("eth_getCode", [caller, launch.blockNumber]),
+      this.#rpc("eth_getBalance", [caller, previousBlock]),
+      this.#rpc("eth_getTransactionReceipt", [launch.transactionHash]),
+    ]);
+
+    const alpha = {
+      factory_caller: caller,
+      ...(codeResult.status === "fulfilled" && typeof codeResult.value === "string"
+        ? {
+            factory_caller_type:
+              codeResult.value === "0x"
+                ? /** @type {const} */ ("EOA")
+                : /** @type {const} */ ("contract"),
+          }
+        : {}),
+      ...(balanceResult.status === "fulfilled" && typeof balanceResult.value === "string"
+        ? { prelaunch_eth: formatWeiAsEth(balanceResult.value) }
+        : {}),
+      ...(receiptResult.status === "fulfilled"
+        ? launchReceiptAlpha(receiptResult.value, token.token.address)
+        : {}),
+    };
+    return { ...token, launch: { ...token.launch, alpha } };
   }
 
   /** @param {DecodedB20Launch} launch */
@@ -220,6 +279,8 @@ function decodeB20CreatedLog(log) {
     !Array.isArray(log.topics) ||
     typeof log.data !== "string" ||
     typeof log.blockNumber !== "string" ||
+    !("transactionHash" in log) ||
+    typeof log.transactionHash !== "string" ||
     log.topics.length < 3 ||
     typeof log.topics[1] !== "string"
   ) {
@@ -241,6 +302,7 @@ function decodeB20CreatedLog(log) {
       symbol,
       decimals,
       blockNumber: log.blockNumber,
+      transactionHash: log.transactionHash,
       blockTimestamp:
         "blockTimestamp" in log && typeof log.blockTimestamp === "string"
           ? log.blockTimestamp
@@ -369,6 +431,89 @@ function isDexPair(pair) {
 /** @param {number} value */
 function toBlockTag(value) {
   return `0x${value.toString(16)}`;
+}
+
+/** @param {string} blockNumber */
+function previousBlockTag(blockNumber) {
+  const number = Number(BigInt(blockNumber));
+  if (!Number.isSafeInteger(number) || number < 0) {
+    throw new Error("Base RPC returned an invalid B20 creation block number");
+  }
+  return toBlockTag(Math.max(0, number - 1));
+}
+
+/** @param {string} value */
+function formatWeiAsEth(value) {
+  const wei = BigInt(value);
+  if (wei < 0n) {
+    throw new Error("Base RPC returned a negative ETH balance");
+  }
+  const whole = wei / 1_000_000_000_000_000_000n;
+  const fraction = (wei % 1_000_000_000_000_000_000n)
+    .toString()
+    .padStart(18, "0")
+    .slice(0, 4)
+    .replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+/** @param {unknown} receipt @param {string} tokenAddress */
+function launchReceiptAlpha(receipt, tokenAddress) {
+  if (receipt === null || typeof receipt !== "object" || !("logs" in receipt) || !Array.isArray(receipt.logs)) {
+    return {};
+  }
+
+  /** @type {Map<string, bigint>} */
+  const mintedByRecipient = new Map();
+  let adminRoleGranted = false;
+  for (const log of receipt.logs) {
+    if (log === null || typeof log !== "object" || !("topics" in log) || !Array.isArray(log.topics)) {
+      continue;
+    }
+    const topics = log.topics;
+    if (
+      "address" in log &&
+      typeof log.address === "string" &&
+      log.address.toLowerCase() === tokenAddress.toLowerCase() &&
+      topics[0] === TRANSFER_TOPIC &&
+      topics[1] === ZERO_WORD &&
+      typeof topics[2] === "string" &&
+      "data" in log &&
+      typeof log.data === "string"
+    ) {
+      try {
+        const recipient = `0x${topics[2].slice(-40)}`.toLowerCase();
+        mintedByRecipient.set(recipient, (mintedByRecipient.get(recipient) ?? 0n) + BigInt(log.data));
+      } catch {
+        // A malformed receipt log should not discard the rest of the launch alpha.
+      }
+    }
+    if (
+      "address" in log &&
+      typeof log.address === "string" &&
+      log.address.toLowerCase() === tokenAddress.toLowerCase() &&
+      topics[0] === ROLE_GRANTED_TOPIC &&
+      topics[1] === ZERO_WORD
+    ) {
+      adminRoleGranted = true;
+    }
+  }
+
+  const totalMinted = [...mintedByRecipient.values()].reduce((total, amount) => total + amount, 0n);
+  const largestMint = [...mintedByRecipient.values()].reduce(
+    (largest, amount) => (amount > largest ? amount : largest),
+    0n,
+  );
+  return {
+    ...(receipt.logs.length > 0 ? { admin_role_granted: adminRoleGranted } : {}),
+    ...(mintedByRecipient.size > 0
+      ? {
+          initial_mint_recipients: mintedByRecipient.size,
+          largest_initial_mint_share_percent:
+            Number((largestMint * 10_000n) / totalMinted) / 100,
+        }
+      : {}),
+  };
 }
 
 /** @template T @param {T[]} values @param {number} size */

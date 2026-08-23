@@ -117,6 +117,7 @@ export function formatTokenAlert(token, now = new Date()) {
     `⛓️ Chain: ${escapeHtml(chainName)}`,
     `🕒 Launched: ${formatAge(token.launch.created_at, now)} ago`,
     ...formatLaunchSource(token.launch.source),
+    ...formatLaunchAlpha(token.launch.alpha),
     `💵 Price: ${formatPrice(marketData?.price?.usd)}`,
     `💰 Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
     `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
@@ -145,6 +146,31 @@ function formatCreator(creatorAddress) {
 function formatLaunchSource(source) {
   const value = source?.trim();
   return value ? [`🏭 Launch source: ${escapeHtml(value)}`] : [];
+}
+
+/** @param {O1Token["launch"]["alpha"]} alpha */
+function formatLaunchAlpha(alpha) {
+  if (alpha === undefined) {
+    return [];
+  }
+
+  const lines = ["🧪 <b>Launch alpha</b>"];
+  if (alpha.factory_caller) {
+    const type = alpha.factory_caller_type ? ` (${alpha.factory_caller_type})` : "";
+    lines.push(`👤 Factory caller: ${formatLink(alpha.factory_caller, debankProfileUrl(alpha.factory_caller))}${type}`);
+  }
+  if (alpha.prelaunch_eth !== undefined) {
+    lines.push(`💰 Pre-launch ETH: ${escapeHtml(alpha.prelaunch_eth)} ETH`);
+  }
+  if (alpha.initial_mint_recipients !== undefined) {
+    const share = alpha.largest_initial_mint_share_percent;
+    const concentration = share === undefined ? "" : ` · largest ${share.toLocaleString("en-US", { maximumFractionDigits: 2 })}%`;
+    lines.push(`📦 Initial mint: ${alpha.initial_mint_recipients} recipient${alpha.initial_mint_recipients === 1 ? "" : "s"}${concentration}`);
+  }
+  if (alpha.admin_role_granted !== undefined) {
+    lines.push(`🛡️ Default admin grant in launch: ${alpha.admin_role_granted ? "yes" : "no"}`);
+  }
+  return lines.length > 1 ? lines : [];
 }
 
 /** @param {string | undefined} description */

@@ -24,6 +24,22 @@ test("B20Client discovers Base Factory launches and enriches them with market da
           assert.deepEqual(request.params, ["0xf123", false]);
           return jsonResponse({ result: { timestamp: `0x${Math.floor(NOW.getTime() / 1_000).toString(16)}` } });
         }
+        if (request.method === "eth_getTransactionByHash") {
+          assert.deepEqual(request.params, ["0xlaunch"]);
+          return jsonResponse({ result: { from: "0xcaller" } });
+        }
+        if (request.method === "eth_getCode") {
+          assert.deepEqual(request.params, ["0xcaller", "0xf123"]);
+          return jsonResponse({ result: "0x" });
+        }
+        if (request.method === "eth_getBalance") {
+          assert.deepEqual(request.params, ["0xcaller", "0xf122"]);
+          return jsonResponse({ result: "0x1a055690d9db80000" });
+        }
+        if (request.method === "eth_getTransactionReceipt") {
+          assert.deepEqual(request.params, ["0xlaunch"]);
+          return jsonResponse({ result: launchReceipt() });
+        }
         assert.equal(request.method, "eth_getLogs");
         assert.deepEqual(request.params[0], {
           address: "0xB20f000000000000000000000000000000000000",
@@ -59,7 +75,7 @@ test("B20Client discovers Base Factory launches and enriches them with market da
 
   const tokens = await client.listTokens(8453);
 
-  assert.equal(requests.length, 4);
+  assert.equal(requests.length, 8);
   assert.deepEqual(tokens, [
     {
       chain_id: 8453,
@@ -74,6 +90,14 @@ test("B20Client discovers Base Factory launches and enriches them with market da
         created_at: NOW.toISOString(),
         pool_id: "0xpool",
         source: "Base B20 Factory",
+        alpha: {
+          factory_caller: "0xcaller",
+          factory_caller_type: "EOA",
+          prelaunch_eth: "30",
+          initial_mint_recipients: 2,
+          largest_initial_mint_share_percent: 80,
+          admin_role_granted: true,
+        },
       },
       market_data: {
         data_status: "fresh",
@@ -147,6 +171,33 @@ test("B20Client does not treat FDV as market cap", async () => {
   assert.deepEqual(await client.listTokens(8453), []);
 });
 
+test("B20Client still returns a qualifying launch when optional alpha RPC calls fail", async () => {
+  const client = new B20Client({
+    rpcUrl: "https://base-rpc.example.test",
+    fetchImpl: async (input, init) => {
+      if (String(input) === "https://base-rpc.example.test") {
+        const request = JSON.parse(String(init?.body));
+        if (request.method === "eth_blockNumber") return jsonResponse({ result: "0x10000" });
+        if (request.method === "eth_getLogs") return jsonResponse({ result: [b20CreatedLog()] });
+        if (request.method === "eth_getTransactionByHash") return new Response(null, { status: 503 });
+        assert.fail(`unexpected RPC request: ${request.method}`);
+      }
+      return jsonResponse([
+        {
+          pairAddress: "0xpool",
+          baseToken: { address: TOKEN_ADDRESS, name: "B20 Example", symbol: "B20" },
+          marketCap: 150_000,
+        },
+      ]);
+    },
+  });
+
+  const [token] = await client.listTokens(8453);
+
+  assert.ok(token);
+  assert.equal(token.launch.alpha, undefined);
+});
+
 /** @param {{ withTimestamp?: boolean }} [options] */
 function b20CreatedLog({ withTimestamp = true } = {}) {
   return {
@@ -156,10 +207,41 @@ function b20CreatedLog({ withTimestamp = true } = {}) {
       `0x${"0".repeat(64)}`,
     ],
     blockNumber: "0xf123",
+    transactionHash: "0xlaunch",
     ...(withTimestamp
       ? { blockTimestamp: `0x${Math.floor(NOW.getTime() / 1_000).toString(16)}` }
       : {}),
     data: encodeEventData("B20 Example", "B20", 18),
+  };
+}
+
+function launchReceipt() {
+  return {
+    logs: [
+      transferLog("0x1111111111111111111111111111111111111111", 80n),
+      transferLog("0x2222222222222222222222222222222222222222", 20n),
+      {
+        address: TOKEN_ADDRESS,
+        topics: [
+          "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d",
+          `0x${"0".repeat(64)}`,
+          `0x${"a".repeat(40).padStart(64, "0")}`,
+        ],
+      },
+    ],
+  };
+}
+
+/** @param {string} recipient @param {bigint} amount */
+function transferLog(recipient, amount) {
+  return {
+    address: TOKEN_ADDRESS,
+    topics: [
+      "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+      `0x${"0".repeat(64)}`,
+      `0x${recipient.slice(2).padStart(64, "0")}`,
+    ],
+    data: `0x${amount.toString(16).padStart(64, "0")}`,
   };
 }
 

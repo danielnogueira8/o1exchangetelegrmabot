@@ -23,7 +23,15 @@
  *     created_at: string,
  *     pool_id: string,
  *     creator_address?: string,
- *     source?: string
+ *     source?: string,
+ *     alpha?: {
+ *       factory_caller?: string,
+ *       factory_caller_type?: "EOA" | "contract",
+ *       prelaunch_eth?: string,
+ *       initial_mint_recipients?: number,
+ *       largest_initial_mint_share_percent?: number,
+ *       admin_role_granted?: boolean
+ *     }
  *   },
  *   market_data?: {
  *     data_status?: string,
