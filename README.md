@@ -5,12 +5,14 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 ## Default behavior
 
 - Polls Base (`8453`), Monad (`143`), and Robinhood Chain (`4663`)
+- Watches new native Base B20 assets directly from the Base B20 Factory
 - Requests the newest 100 tokens per chain on each poll
 - Uses GitHub Actions to trigger the Vercel production endpoint every five minutes
 - Requires a launch age of less than 24 hours
 - Requires fresh market data
 - Requires either at least $10,000 in 24-hour USD volume or a $50,000 market cap
 - Adds the token's About description when published in o1 token details
+- Labels native assets as **Base B20 Factory** when that launch source is known
 - Adds Website, X, and Telegram links when they are published in the token's o1 details
 - Adds a **Dismiss alert** button that deletes that alert message when tapped
 - Atomically claims each alert before delivery so overlapping or retried runs cannot send duplicates
@@ -102,6 +104,10 @@ Vercel hosts the app and GitHub Actions schedules it every five minutes at no ex
 6. Merge the workflow into the default branch. Scheduled GitHub workflows run from the default branch only.
 
 The included GitHub workflow calls `https://o1exchangetelegrmabot.vercel.app/api/cron` every five minutes with that secret. The Vercel function verifies it, obtains a short Postgres lock to prevent overlapping invocations, polls all configured chains, and uses Postgres for durable deduplication. You can test it after deployment from **Actions → Trigger Vercel token monitor → Run workflow**.
+
+### Native Base B20 alerts
+
+No extra key or environment variable is needed. On each scheduled run, the bot reads `B20Created` events from [Base's canonical B20 Factory](https://github.com/base/base-std/blob/main/src/StdPrecompiles.sol), enriches only those assets with live market data, then applies the same under-24-hour, fresh-data, `$10,000` 24-hour-volume-or-`$50,000`-market-cap rule used for o1 alerts. B20 alerts include `🏭 Launch source: Base B20 Factory`. B20 runs before o1, preserving that label if another index also lists the asset. The event establishes the protocol-level source; it cannot reliably identify which third-party website submitted the factory call, so no frontend is claimed when it is unknown.
 
 To enable the dismiss button, register `https://o1exchangetelegrmabot.vercel.app/api/telegram` as the bot's Telegram webhook with the same `TELEGRAM_WEBHOOK_SECRET`. After the Vercel deployment is ready, run this from a shell where `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are set:
 
