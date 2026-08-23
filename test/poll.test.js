@@ -60,7 +60,7 @@ test("one poll claims and sends an unseen qualifying token", async () => {
   });
 });
 
-test("one poll enriches a new alert with optional token socials", async () => {
+test("one poll enriches a new alert with optional token details", async () => {
   const listedToken = qualifyingToken();
   const detailedToken = /** @type {import("../src/types.js").O1Token} */ (
     structuredClone(listedToken)
@@ -68,6 +68,7 @@ test("one poll enriches a new alert with optional token socials", async () => {
   detailedToken.token.website = "https://example.com";
   detailedToken.token.x = "https://x.com/example";
   detailedToken.token.telegram = "https://t.me/example";
+  detailedToken.token.description = "Deployed using https://j7tracker.io.";
   let detailRequests = 0;
 
   const summary = await runPoll({
@@ -87,6 +88,7 @@ test("one poll enriches a new alert with optional token socials", async () => {
     },
     notifier: {
       async sendTokenAlert(token) {
+        assert.equal(token.token.description, "Deployed using https://j7tracker.io.");
         assert.equal(token.token.website, "https://example.com");
         assert.equal(token.token.x, "https://x.com/example");
         assert.equal(token.token.telegram, "https://t.me/example");
@@ -106,7 +108,7 @@ test("one poll enriches a new alert with optional token socials", async () => {
   assert.equal(summary.sent, 1);
 });
 
-test("stalled social lookups share one budget and fall back to base alerts", async (t) => {
+test("stalled detail lookups share one budget and fall back to base alerts", async (t) => {
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
   const firstToken = qualifyingToken();
   const secondToken = qualifyingToken();

@@ -13,6 +13,7 @@ function token() {
       address: "0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3",
       name: "Example <Moon> & Co",
       symbol: "EX&",
+      description: "Deployed using https://j7tracker.io.",
       website: "https://example.com",
       x: "https://x.com/example",
       telegram: "https://t.me/example",
@@ -48,6 +49,7 @@ test("the Telegram alert is readable and HTML-safe", () => {
     "💵 Price: $0.0015",
     "💰 Market cap: $150,000",
     "💧 Liquidity: $25,000",
+    "📝 About: Deployed using https://j7tracker.io.",
     "",
     "📊 <b>Activity</b>",
     "⚡ 1h: 30 trades · $12,000 volume",
@@ -60,6 +62,15 @@ test("the Telegram alert is readable and HTML-safe", () => {
   ]);
   assert.doesNotMatch(message, /Pool:/);
   assert.doesNotMatch(message, /Example <Moon>/);
+});
+
+test("the Telegram alert omits an absent About description", () => {
+  const tokenWithoutDescription = /** @type {import("../src/types.js").O1Token} */ (
+    token()
+  );
+  delete tokenWithoutDescription.token.description;
+
+  assert.doesNotMatch(formatTokenAlert(tokenWithoutDescription, NOW), /About:/);
 });
 
 test("the Telegram alert omits absent or unsafe social links", () => {

@@ -14,6 +14,7 @@
  *     symbol: string,
  *     decimals?: number,
  *     image_url?: string,
+ *     description?: string,
  *     website?: string,
  *     x?: string,
  *     telegram?: string
