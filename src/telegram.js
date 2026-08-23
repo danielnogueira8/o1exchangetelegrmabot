@@ -1,3 +1,5 @@
+import { NotificationRejectedError } from "./notification-error.js";
+
 /** @typedef {import("./types.js").O1Token} O1Token */
 /** @typedef {import("./types.js").TokenActivity} TokenActivity */
 
@@ -51,12 +53,18 @@ export class TelegramNotifier {
       },
     );
 
-    const payload = /** @type {{ ok?: boolean }} */ (await response.json());
-    if (!response.ok || payload.ok !== true) {
-      throw new Error(`Telegram request failed with status ${response.status}`);
+    if (!response.ok) {
+      throw new NotificationRejectedError(
+        `Telegram rejected the request with status ${response.status}`,
+      );
     }
 
-    return true;
+    const payload = /** @type {{ ok?: boolean }} */ (await response.json());
+    if (payload.ok !== true) {
+      throw new NotificationRejectedError("Telegram rejected the request payload");
+    }
+
+    return /** @type {const} */ ("delivered");
   }
 }
 
@@ -75,7 +83,7 @@ export class ConsoleNotifier {
    */
   async sendTokenAlert(token, now = new Date()) {
     this.#logger.info(`[dry-run]\n${formatTokenAlert(token, now)}`);
-    return false;
+    return /** @type {const} */ ("previewed");
   }
 }
 

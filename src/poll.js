@@ -1,7 +1,9 @@
 import { matchesAlertRules } from "./token-rules.js";
+import { NotificationRejectedError } from "./notification-error.js";
 
 /** @typedef {import("./types.js").O1Token} O1Token */
 /** @typedef {import("./types.js").AlertRules} AlertRules */
+/** @typedef {import("./types.js").DeliveryResult} DeliveryResult */
 
 /**
  * @param {number} pollStartedAt
@@ -19,7 +21,7 @@ export function calculateNextPollDelay(pollStartedAt, pollFinishedAt, intervalMs
  *   rules: AlertRules,
  *   now?: Date,
  *   o1Client: { listTokens(chainId: number): Promise<O1Token[]> },
- *   notifier: { sendTokenAlert(token: O1Token, now?: Date): Promise<boolean> },
+ *   notifier: { sendTokenAlert(token: O1Token, now?: Date): Promise<DeliveryResult> },
  *   alertStore: {
  *     claimAlert(chainId: number, tokenAddress: string): boolean | Promise<boolean>,
  *     releaseAlert(chainId: number, tokenAddress: string): void | Promise<void>
@@ -40,7 +42,7 @@ export async function runPoll({
     fetched: 0,
     qualified: 0,
     sent: 0,
-    alreadyAlerted: 0,
+    alreadyClaimed: 0,
     errors: 0,
   };
 
@@ -78,13 +80,14 @@ export async function runPoll({
       }
 
       if (!claimed) {
-        summary.alreadyAlerted += 1;
+        summary.alreadyClaimed += 1;
         continue;
       }
 
-      let delivered;
+      /** @type {DeliveryResult} */
+      let deliveryResult;
       try {
-        delivered = await notifier.sendTokenAlert(token, now);
+        deliveryResult = await notifier.sendTokenAlert(token, now);
       } catch (error) {
         summary.errors += 1;
         logger.error("Failed to deliver token alert", {
@@ -92,20 +95,14 @@ export async function runPoll({
           tokenAddress: token.token.address,
           error,
         });
+        if (error instanceof NotificationRejectedError) {
+          await releaseClaim(alertStore, token, summary, logger);
+        }
         continue;
       }
 
-      if (!delivered) {
-        try {
-          await alertStore.releaseAlert(token.chain_id, token.token.address);
-        } catch (error) {
-          summary.errors += 1;
-          logger.error("Failed to release token alert preview", {
-            chainId: token.chain_id,
-            tokenAddress: token.token.address,
-            error,
-          });
-        }
+      if (deliveryResult === "previewed") {
+        await releaseClaim(alertStore, token, summary, logger);
         continue;
       }
 
@@ -114,4 +111,23 @@ export async function runPoll({
   }
 
   return summary;
+}
+
+/**
+ * @param {{ releaseAlert(chainId: number, tokenAddress: string): void | Promise<void> }} alertStore
+ * @param {O1Token} token
+ * @param {{ errors: number }} summary
+ * @param {{ error(...values: unknown[]): void }} logger
+ */
+async function releaseClaim(alertStore, token, summary, logger) {
+  try {
+    await alertStore.releaseAlert(token.chain_id, token.token.address);
+  } catch (error) {
+    summary.errors += 1;
+    logger.error("Failed to release token alert claim", {
+      chainId: token.chain_id,
+      tokenAddress: token.token.address,
+      error,
+    });
+  }
 }

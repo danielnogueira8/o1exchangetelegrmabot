@@ -38,6 +38,8 @@
  *   minimumMarketCapUsd: number,
  *   minimum24HourVolumeUsd: number
  * }} AlertRules
+ *
+ * @typedef {"delivered" | "previewed"} DeliveryResult
  */
 
 export {};

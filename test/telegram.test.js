@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { NotificationRejectedError } from "../src/notification-error.js";
 import { formatTokenAlert, TelegramNotifier } from "../src/telegram.js";
 
 const NOW = new Date("2026-08-22T12:00:00.000Z");
@@ -64,7 +65,7 @@ test("TelegramNotifier sends the alert as HTML to the configured chat", async ()
 
   const delivered = await notifier.sendTokenAlert(token(), NOW);
 
-  assert.equal(delivered, true);
+  assert.equal(delivered, "delivered");
   assert.equal(requests.length, 1);
   assert.equal(
     requests[0].input,
@@ -77,4 +78,21 @@ test("TelegramNotifier sends the alert as HTML to the configured chat", async ()
   assert.equal(body.parse_mode, "HTML");
   assert.equal(body.disable_web_page_preview, true);
   assert.equal(body.text, formatTokenAlert(token(), NOW));
+});
+
+test("TelegramNotifier identifies an explicit API rejection as safe to retry", async () => {
+  const notifier = new TelegramNotifier({
+    botToken: "test-bot-token",
+    chatId: "test-chat-id",
+    fetchImpl: async () =>
+      new Response(JSON.stringify({ ok: false, description: "Too Many Requests" }), {
+        status: 429,
+        headers: { "content-type": "application/json" },
+      }),
+  });
+
+  await assert.rejects(
+    notifier.sendTokenAlert(token(), NOW),
+    NotificationRejectedError,
+  );
 });

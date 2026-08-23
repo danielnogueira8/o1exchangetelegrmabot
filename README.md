@@ -11,6 +11,7 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 - Requires either at least $10,000 in 24-hour USD volume or a $50,000 market cap
 - Atomically claims each alert before delivery so overlapping or retried runs cannot send duplicates
 - Keeps an alert claimed after an ambiguous Telegram failure, favoring no duplicate message over an automatic retry
+- Releases the claim after an explicit Telegram rejection so a later poll can retry it
 - Keeps polling other chains and tokens when one request fails
 - Retries temporary o1 rate limits and server errors
 

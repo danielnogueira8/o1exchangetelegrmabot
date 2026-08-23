@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { NotificationRejectedError } from "../src/notification-error.js";
 import { calculateNextPollDelay, runPoll } from "../src/poll.js";
 import { NOW, qualifyingToken, rules } from "../test-support/fixtures.js";
 
@@ -9,7 +10,7 @@ test("the next poll is scheduled from the previous poll's start time", () => {
   assert.equal(calculateNextPollDelay(1_000, 71_000, 60_000), 0);
 });
 
-test("one poll sends and records an unseen qualifying token", async () => {
+test("one poll claims and sends an unseen qualifying token", async () => {
   /** @type {string[]} */
   const sentAddresses = [];
   const recordedAddresses = new Set();
@@ -27,10 +28,11 @@ test("one poll sends and records an unseen qualifying token", async () => {
       async sendTokenAlert(token) {
         assert.equal(recordedAddresses.has(`8453:${token.token.address}`), true);
         sentAddresses.push(token.token.address);
-        return true;
+        return "delivered";
       },
     },
     alertStore: {
+      /** @param {number} chainId @param {string} tokenAddress */
       claimAlert(chainId, tokenAddress) {
         const identity = `${chainId}:${tokenAddress.toLowerCase()}`;
         if (recordedAddresses.has(identity)) {
@@ -39,6 +41,7 @@ test("one poll sends and records an unseen qualifying token", async () => {
         recordedAddresses.add(identity);
         return true;
       },
+      /** @param {number} chainId @param {string} tokenAddress */
       releaseAlert(chainId, tokenAddress) {
         recordedAddresses.delete(`${chainId}:${tokenAddress.toLowerCase()}`);
       },
@@ -52,7 +55,7 @@ test("one poll sends and records an unseen qualifying token", async () => {
     fetched: 1,
     qualified: 1,
     sent: 1,
-    alreadyAlerted: 0,
+    alreadyClaimed: 0,
     errors: 0,
   });
 });
@@ -79,7 +82,7 @@ test("a failed chain does not prevent other chains from being checked", async ()
     notifier: {
       async sendTokenAlert(token) {
         sentAddresses.push(token.token.address);
-        return true;
+        return "delivered";
       },
     },
     alertStore: {
@@ -103,7 +106,7 @@ test("a failed chain does not prevent other chains from being checked", async ()
     fetched: 1,
     qualified: 1,
     sent: 1,
-    alreadyAlerted: 0,
+    alreadyClaimed: 0,
     errors: 1,
   });
 });
@@ -129,10 +132,11 @@ test("an ambiguous Telegram failure keeps its claim and later alerts continue", 
         if (token.token.address === "0xfirst") {
           throw new Error("Telegram is temporarily unavailable");
         }
-        return true;
+        return "delivered";
       },
     },
     alertStore: {
+      /** @param {number} chainId @param {string} tokenAddress */
       claimAlert(chainId, tokenAddress) {
         const identity = `${chainId}:${tokenAddress}`;
         if (recordedAddresses.has(identity)) {
@@ -141,6 +145,7 @@ test("an ambiguous Telegram failure keeps its claim and later alerts continue", 
         recordedAddresses.add(identity);
         return true;
       },
+      /** @param {number} chainId @param {string} tokenAddress */
       releaseAlert(chainId, tokenAddress) {
         recordedAddresses.delete(`${chainId}:${tokenAddress}`);
       },
@@ -153,12 +158,62 @@ test("an ambiguous Telegram failure keeps its claim and later alerts continue", 
     fetched: 2,
     qualified: 2,
     sent: 1,
-    alreadyAlerted: 0,
+    alreadyClaimed: 0,
     errors: 1,
   });
 });
 
-test("an already-alerted token is not sent again", async () => {
+test("an explicit Telegram rejection releases its claim for a later retry", async () => {
+  const claimedAddresses = new Set();
+  let rejectDelivery = true;
+  let deliveryAttempts = 0;
+  const dependencies = {
+    chainIds: [8453],
+    rules,
+    now: NOW,
+    o1Client: {
+      async listTokens() {
+        return [qualifyingToken()];
+      },
+    },
+    notifier: {
+      async sendTokenAlert() {
+        deliveryAttempts += 1;
+        if (rejectDelivery) {
+          throw new NotificationRejectedError("Telegram rejected the request");
+        }
+        return /** @type {const} */ ("delivered");
+      },
+    },
+    alertStore: {
+      /** @param {number} chainId @param {string} tokenAddress */
+      claimAlert(chainId, tokenAddress) {
+        const identity = `${chainId}:${tokenAddress}`;
+        if (claimedAddresses.has(identity)) {
+          return false;
+        }
+        claimedAddresses.add(identity);
+        return true;
+      },
+      /** @param {number} chainId @param {string} tokenAddress */
+      releaseAlert(chainId, tokenAddress) {
+        claimedAddresses.delete(`${chainId}:${tokenAddress}`);
+      },
+    },
+    logger: { info() {}, error() {} },
+  };
+
+  const rejectedSummary = await runPoll(dependencies);
+  assert.equal(claimedAddresses.size, 0);
+  assert.equal(rejectedSummary.errors, 1);
+
+  rejectDelivery = false;
+  const deliveredSummary = await runPoll(dependencies);
+  assert.equal(deliveredSummary.sent, 1);
+  assert.equal(deliveryAttempts, 2);
+});
+
+test("an already-claimed token is not sent again", async () => {
   let notifierCalls = 0;
 
   const summary = await runPoll({
@@ -173,7 +228,7 @@ test("an already-alerted token is not sent again", async () => {
     notifier: {
       async sendTokenAlert() {
         notifierCalls += 1;
-        return true;
+        return "delivered";
       },
     },
     alertStore: {
@@ -192,7 +247,7 @@ test("an already-alerted token is not sent again", async () => {
     fetched: 1,
     qualified: 1,
     sent: 0,
-    alreadyAlerted: 1,
+    alreadyClaimed: 1,
     errors: 0,
   });
 });
@@ -211,7 +266,7 @@ test("a dry-run preview releases its claim for a later live run", async () => {
     },
     notifier: {
       async sendTokenAlert() {
-        return false;
+        return "previewed";
       },
     },
     alertStore: {
@@ -230,7 +285,7 @@ test("a dry-run preview releases its claim for a later live run", async () => {
     fetched: 1,
     qualified: 1,
     sent: 0,
-    alreadyAlerted: 0,
+    alreadyClaimed: 0,
     errors: 0,
   });
 });
@@ -252,7 +307,7 @@ test("one poll supports an asynchronous serverless alert store", async () => {
       async sendTokenAlert() {
         assert.equal(claimed, true);
         delivered = true;
-        return true;
+        return "delivered";
       },
     },
     alertStore: {

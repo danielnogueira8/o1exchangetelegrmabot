@@ -96,7 +96,7 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
     notifier: {
       async sendTokenAlert(token) {
         sentAddresses.push(token.token.address);
-        return true;
+        return "delivered";
       },
     },
     now() {
@@ -121,7 +121,7 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
       fetched: 1,
       qualified: 1,
       sent: 1,
-      alreadyAlerted: 0,
+      alreadyClaimed: 0,
       errors: 0,
     },
   });

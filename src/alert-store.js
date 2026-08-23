@@ -9,10 +9,10 @@ export class AlertStore {
   #database;
 
   /** @type {Database.Statement<[number, string]>} */
-  #insertAlert;
+  #insertClaim;
 
   /** @type {Database.Statement<[number, string]>} */
-  #deleteAlert;
+  #deleteClaim;
 
   /** @param {string} filename */
   constructor(filename) {
@@ -22,21 +22,36 @@ export class AlertStore {
 
     this.#database = new Database(filename);
     this.#database.pragma("busy_timeout = 5000");
+    const hasLegacyAlertTable =
+      this.#database
+        .prepare(`
+          SELECT 1
+          FROM sqlite_master
+          WHERE type = 'table' AND name = 'alerted_tokens'
+        `)
+        .get() !== undefined;
     this.#database.exec(`
-      CREATE TABLE IF NOT EXISTS alerted_tokens (
+      CREATE TABLE IF NOT EXISTS claimed_alerts (
         chain_id INTEGER NOT NULL,
         token_address TEXT NOT NULL,
-        alerted_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        claimed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (chain_id, token_address)
       )
     `);
+    if (hasLegacyAlertTable) {
+      this.#database.exec(`
+        INSERT OR IGNORE INTO claimed_alerts (chain_id, token_address, claimed_at)
+        SELECT chain_id, token_address, alerted_at
+        FROM alerted_tokens
+      `);
+    }
 
-    this.#insertAlert = this.#database.prepare(`
-      INSERT OR IGNORE INTO alerted_tokens (chain_id, token_address)
+    this.#insertClaim = this.#database.prepare(`
+      INSERT OR IGNORE INTO claimed_alerts (chain_id, token_address)
       VALUES (?, ?)
     `);
-    this.#deleteAlert = this.#database.prepare(`
-      DELETE FROM alerted_tokens
+    this.#deleteClaim = this.#database.prepare(`
+      DELETE FROM claimed_alerts
       WHERE chain_id = ? AND token_address = ?
     `);
   }
@@ -46,7 +61,7 @@ export class AlertStore {
    * @param {string} tokenAddress
    */
   claimAlert(chainId, tokenAddress) {
-    return this.#insertAlert.run(chainId, normalizeTokenAddress(tokenAddress)).changes === 1;
+    return this.#insertClaim.run(chainId, normalizeTokenAddress(tokenAddress)).changes === 1;
   }
 
   /**
@@ -54,7 +69,7 @@ export class AlertStore {
    * @param {string} tokenAddress
    */
   releaseAlert(chainId, tokenAddress) {
-    this.#deleteAlert.run(chainId, normalizeTokenAddress(tokenAddress));
+    this.#deleteClaim.run(chainId, normalizeTokenAddress(tokenAddress));
   }
 
   close() {
