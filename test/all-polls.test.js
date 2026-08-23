@@ -4,7 +4,7 @@ import test from "node:test";
 import { runAllPolls } from "../src/all-polls.js";
 import { NOW, qualifyingToken, rules } from "../test-support/fixtures.js";
 
-test("B20 alerts take priority over overlapping o1 tokens", async () => {
+test("o1 alerts keep their rules when a B20 token is also o1-indexed", async () => {
   const b20Token = /** @type {import("../src/types.js").O1Token} */ (qualifyingToken());
   b20Token.launch.source = "Base B20 Factory";
   const o1Token = qualifyingToken();
@@ -36,7 +36,7 @@ test("B20 alerts take priority over overlapping o1 tokens", async () => {
     logger: { info() {}, error() {} },
   });
 
-  assert.deepEqual(sources, ["Base B20 Factory"]);
+  assert.deepEqual(sources, [undefined]);
   assert.deepEqual(summary, {
     fetched: 2,
     qualified: 2,

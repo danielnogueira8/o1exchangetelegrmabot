@@ -99,6 +99,54 @@ test("B20Client only discovers launches on Base", async () => {
   assert.deepEqual(await client.listTokens(143), []);
 });
 
+test("B20Client does not let volume qualify a token below its market-cap floor", async () => {
+  const client = new B20Client({
+    rpcUrl: "https://base-rpc.example.test",
+    fetchImpl: async (input, init) => {
+      if (String(input) === "https://base-rpc.example.test") {
+        const request = JSON.parse(String(init?.body));
+        if (request.method === "eth_blockNumber") return jsonResponse({ result: "0x10000" });
+        return jsonResponse({ result: [b20CreatedLog()] });
+      }
+      return jsonResponse([
+        {
+          pairAddress: "0xpool",
+          baseToken: { address: TOKEN_ADDRESS, name: "Below floor", symbol: "LOW" },
+          marketCap: 99_999,
+          volume: { h24: 1_000_000 },
+          txns: { h24: { buys: 100, sells: 100 } },
+        },
+      ]);
+    },
+  });
+
+  assert.deepEqual(await client.listTokens(8453), []);
+});
+
+test("B20Client does not treat FDV as market cap", async () => {
+  const client = new B20Client({
+    rpcUrl: "https://base-rpc.example.test",
+    fetchImpl: async (input, init) => {
+      if (String(input) === "https://base-rpc.example.test") {
+        const request = JSON.parse(String(init?.body));
+        if (request.method === "eth_blockNumber") return jsonResponse({ result: "0x10000" });
+        return jsonResponse({ result: [b20CreatedLog()] });
+      }
+      return jsonResponse([
+        {
+          pairAddress: "0xpool",
+          baseToken: { address: TOKEN_ADDRESS, name: "FDV only", symbol: "FDV" },
+          fdv: 1_000_000,
+          volume: { h24: 1_000_000 },
+          txns: { h24: { buys: 100, sells: 100 } },
+        },
+      ]);
+    },
+  });
+
+  assert.deepEqual(await client.listTokens(8453), []);
+});
+
 /** @param {{ withTimestamp?: boolean }} [options] */
 function b20CreatedLog({ withTimestamp = true } = {}) {
   return {
