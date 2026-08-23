@@ -1,10 +1,11 @@
 import { loadConfig } from "./config.js";
+import { B20Client } from "./b20-client.js";
+import { runAllPolls } from "./all-polls.js";
 import { NeonAlertStore } from "./neon-alert-store.js";
 import { NeonDatabase } from "./neon-database.js";
 import { NeonPollLock } from "./neon-poll-lock.js";
 import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
-import { runPoll } from "./poll.js";
 
 /** @typedef {import("./neon-database.js").NeonDatabaseClient} NeonDatabaseClient */
 /** @typedef {import("./types.js").O1Token} O1Token */
@@ -16,6 +17,7 @@ import { runPoll } from "./poll.js";
  *   environment?: Record<string, string | undefined>,
  *   database?: NeonDatabaseClient,
  *   o1Client?: O1ClientLike,
+ *   b20Client?: O1ClientLike,
  *   notifier?: { sendTokenAlert(token: O1Token, now?: Date): Promise<DeliveryResult> },
  *   now?: () => Date,
  *   logger?: { info(...values: unknown[]): void, error(...values: unknown[]): void }
@@ -25,6 +27,7 @@ export function createCronHandler({
   environment = process.env,
   database,
   o1Client,
+  b20Client,
   notifier,
   now = () => new Date(),
   logger = console,
@@ -58,12 +61,14 @@ export function createCronHandler({
 
       const activeO1Client =
         o1Client ?? new O1Client({ apiKey: config.o1ApiKey, market: config.market });
+      const activeB20Client = b20Client ?? new B20Client();
       const activeNotifier = notifier ?? createNotifier(config, logger);
-      const summary = await runPoll({
+      const summary = await runAllPolls({
         chainIds: config.chainIds,
         rules: config.rules,
         now: now(),
         o1Client: activeO1Client,
+        b20Client: activeB20Client,
         notifier: activeNotifier,
         alertStore,
         logger,

@@ -91,6 +91,11 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
         return chainId === 8453 ? [qualifyingToken()] : [];
       },
     },
+    b20Client: {
+      async listTokens() {
+        return [];
+      },
+    },
     notifier: {
       async sendTokenAlert(token) {
         sentAddresses.push(token.token.address);

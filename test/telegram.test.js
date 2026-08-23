@@ -73,6 +73,17 @@ test("the Telegram alert omits an absent About description", () => {
   assert.doesNotMatch(formatTokenAlert(tokenWithoutDescription, NOW), /About:/);
 });
 
+test("the Telegram alert identifies a known launch source", () => {
+  const b20Token = /** @type {import("../src/types.js").O1Token} */ (token());
+  b20Token.launch.source = "Base B20 Factory";
+  delete b20Token.launch.creator_address;
+
+  const message = formatTokenAlert(b20Token, NOW);
+
+  assert.match(message, /🏭 Launch source: Base B20 Factory/);
+  assert.doesNotMatch(message, /Creator:/);
+});
+
 test("the Telegram alert omits absent or unsafe social links", () => {
   const tokenWithoutSocials = token();
   tokenWithoutSocials.token.website = "javascript:alert('unsafe')";

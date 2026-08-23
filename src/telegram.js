@@ -116,6 +116,7 @@ export function formatTokenAlert(token, now = new Date()) {
     `🪙 <b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
     `⛓️ Chain: ${escapeHtml(chainName)}`,
     `🕒 Launched: ${formatAge(token.launch.created_at, now)} ago`,
+    ...formatLaunchSource(token.launch.source),
     `💵 Price: ${formatPrice(marketData?.price?.usd)}`,
     `💰 Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
     `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
@@ -127,12 +128,23 @@ export function formatTokenAlert(token, now = new Date()) {
     formatActivity("24h", marketData),
     "",
     `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
-    `👤 Creator: ${formatLink(
-      token.launch.creator_address,
-      debankProfileUrl(token.launch.creator_address),
-    )}`,
+    ...formatCreator(token.launch.creator_address),
     ...formatSocialLinks(token.token),
   ].join("\n");
+}
+
+/** @param {string | undefined} creatorAddress */
+function formatCreator(creatorAddress) {
+  const address = creatorAddress?.trim();
+  return address
+    ? [`👤 Creator: ${formatLink(address, debankProfileUrl(address))}`]
+    : [];
+}
+
+/** @param {string | undefined} source */
+function formatLaunchSource(source) {
+  const value = source?.trim();
+  return value ? [`🏭 Launch source: ${escapeHtml(value)}`] : [];
 }
 
 /** @param {string | undefined} description */

@@ -22,7 +22,8 @@
  *   launch: {
  *     created_at: string,
  *     pool_id: string,
- *     creator_address: string
+ *     creator_address?: string,
+ *     source?: string
  *   },
  *   market_data?: {
  *     data_status?: string,

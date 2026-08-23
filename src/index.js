@@ -1,11 +1,13 @@
 import "dotenv/config";
 
 import { loadConfig } from "./config.js";
+import { B20Client } from "./b20-client.js";
+import { runAllPolls } from "./all-polls.js";
 import { NeonAlertStore } from "./neon-alert-store.js";
 import { NeonDatabase } from "./neon-database.js";
 import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
-import { calculateNextPollDelay, runPoll } from "./poll.js";
+import { calculateNextPollDelay } from "./poll.js";
 
 const config = loadConfig();
 const database = new NeonDatabase(config.databaseUrl);
@@ -14,6 +16,7 @@ const o1Client = new O1Client({
   apiKey: config.o1ApiKey,
   market: config.market,
 });
+const b20Client = new B20Client();
 const notifier = createNotifier(config);
 
 let stopping = false;
@@ -36,10 +39,11 @@ console.info("Starting o1 token monitor", {
 
 do {
   const pollStartedAt = Date.now();
-  const summary = await runPoll({
+  const summary = await runAllPolls({
     chainIds: config.chainIds,
     rules: config.rules,
     o1Client,
+    b20Client,
     notifier,
     alertStore,
     logger: console,
