@@ -13,6 +13,9 @@ function token() {
       address: "0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3",
       name: "Example <Moon> & Co",
       symbol: "EX&",
+      website: "https://example.com",
+      x: "https://x.com/example",
+      telegram: "https://t.me/example",
     },
     launch: {
       created_at: "2026-08-22T10:00:00.000Z",
@@ -53,9 +56,22 @@ test("the Telegram alert is readable and HTML-safe", () => {
     "",
     '🛒 Token: <a href="https://t.me/Sigma_buyBot?start=x699691974-0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3">0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3</a>',
     '👤 Creator: <a href="https://debank.com/profile/0xC7937601a50669d3B4725d01201335ba46bc149A">0xC7937601a50669d3B4725d01201335ba46bc149A</a>',
+    '🔗 Socials: <a href="https://example.com">🌐 Website</a> · <a href="https://x.com/example">𝕏 X</a> · <a href="https://t.me/example">✈️ Telegram</a>',
   ]);
   assert.doesNotMatch(message, /Pool:/);
   assert.doesNotMatch(message, /Example <Moon>/);
+});
+
+test("the Telegram alert omits absent or unsafe social links", () => {
+  const tokenWithoutSocials = token();
+  tokenWithoutSocials.token.website = "javascript:alert('unsafe')";
+  tokenWithoutSocials.token.x = "";
+  tokenWithoutSocials.token.telegram = "ftp://example.com/community";
+
+  const message = formatTokenAlert(tokenWithoutSocials, NOW);
+
+  assert.doesNotMatch(message, /Socials:/);
+  assert.doesNotMatch(message, /javascript:/);
 });
 
 test("TelegramNotifier sends the alert as HTML to the configured chat", async () => {

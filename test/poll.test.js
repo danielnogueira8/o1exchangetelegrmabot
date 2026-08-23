@@ -60,6 +60,52 @@ test("one poll claims and sends an unseen qualifying token", async () => {
   });
 });
 
+test("one poll enriches a new alert with optional token socials", async () => {
+  const listedToken = qualifyingToken();
+  const detailedToken = /** @type {import("../src/types.js").O1Token} */ (
+    structuredClone(listedToken)
+  );
+  detailedToken.token.website = "https://example.com";
+  detailedToken.token.x = "https://x.com/example";
+  detailedToken.token.telegram = "https://t.me/example";
+  let detailRequests = 0;
+
+  const summary = await runPoll({
+    chainIds: [8453],
+    rules,
+    now: NOW,
+    o1Client: {
+      async listTokens() {
+        return [listedToken];
+      },
+      async getTokenDetails(chainId, tokenAddress) {
+        detailRequests += 1;
+        assert.equal(chainId, 8453);
+        assert.equal(tokenAddress, "0x1234");
+        return detailedToken;
+      },
+    },
+    notifier: {
+      async sendTokenAlert(token) {
+        assert.equal(token.token.website, "https://example.com");
+        assert.equal(token.token.x, "https://x.com/example");
+        assert.equal(token.token.telegram, "https://t.me/example");
+        return "delivered";
+      },
+    },
+    alertStore: {
+      claimAlert() {
+        return true;
+      },
+      releaseAlert() {},
+    },
+    logger: { info() {}, error() {} },
+  });
+
+  assert.equal(detailRequests, 1);
+  assert.equal(summary.sent, 1);
+});
+
 test("a failed chain does not prevent other chains from being checked", async () => {
   /** @type {string[]} */
   const sentAddresses = [];
@@ -223,6 +269,9 @@ test("an already-claimed token is not sent again", async () => {
     o1Client: {
       async listTokens() {
         return [qualifyingToken()];
+      },
+      async getTokenDetails() {
+        assert.fail("an already-claimed token must not request details");
       },
     },
     notifier: {

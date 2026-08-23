@@ -67,3 +67,45 @@ test("listTokens retries a rate-limited request", async () => {
   assert.deepEqual(await client.listTokens(4663), []);
   assert.equal(requests, 2);
 });
+
+test("getTokenDetails requests the token resource used for optional socials", async () => {
+  /** @type {{ input: string, init: RequestInit | undefined }[]} */
+  const requests = [];
+  const expectedToken = {
+    chain_id: 8453,
+    token: {
+      address: "0x1234",
+      name: "Example",
+      symbol: "EX",
+      website: "https://example.com",
+      x: "https://x.com/example",
+      telegram: "https://t.me/example",
+    },
+    launch: {
+      created_at: "2026-08-22T10:00:00.000Z",
+      pool_id: "0xpool",
+      creator_address: "0xcreator",
+    },
+    market_data: {},
+  };
+  const client = new O1Client({
+    apiKey: "test-api-key",
+    fetchImpl: async (input, init) => {
+      requests.push({ input: String(input), init });
+      return new Response(JSON.stringify({ data: expectedToken }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  const token = await client.getTokenDetails(8453, "0x1234");
+
+  assert.deepEqual(token, expectedToken);
+  assert.equal(requests.length, 1);
+  const request = requests[0];
+  const url = new URL(request.input);
+  assert.equal(url.pathname, "/v1/tokens/8453/0x1234");
+  assert.deepEqual(Object.fromEntries(url.searchParams), { include: "market" });
+  assert.equal(new Headers(request.init?.headers).get("x-api-key"), "test-api-key");
+});

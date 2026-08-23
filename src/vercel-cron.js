@@ -13,7 +13,10 @@ import { RedisPollLock } from "./redis-poll-lock.js";
  * @param {{
  *   environment?: Record<string, string | undefined>,
  *   createRedis: () => RedisClient,
- *   o1Client?: { listTokens(chainId: number): Promise<O1Token[]> },
+ *   o1Client?: {
+ *     listTokens(chainId: number): Promise<O1Token[]>,
+ *     getTokenDetails?(chainId: number, tokenAddress: string): Promise<O1Token>
+ *   },
  *   notifier?: { sendTokenAlert(token: O1Token, now?: Date): Promise<DeliveryResult> },
  *   now?: () => Date,
  *   logger?: { info(...values: unknown[]): void, error(...values: unknown[]): void }

@@ -13,7 +13,10 @@
  *     name: string,
  *     symbol: string,
  *     decimals?: number,
- *     image_url?: string
+ *     image_url?: string,
+ *     website?: string,
+ *     x?: string,
+ *     telegram?: string
  *   },
  *   launch: {
  *     created_at: string,

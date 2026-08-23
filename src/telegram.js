@@ -124,7 +124,43 @@ export function formatTokenAlert(token, now = new Date()) {
       token.launch.creator_address,
       debankProfileUrl(token.launch.creator_address),
     )}`,
+    ...formatSocialLinks(token.token),
   ].join("\n");
+}
+
+/** @param {O1Token["token"]} token */
+function formatSocialLinks(token) {
+  const links = [
+    formatSocialLink("🌐 Website", token.website),
+    formatSocialLink("𝕏 X", token.x),
+    formatSocialLink("✈️ Telegram", token.telegram),
+  ].filter((link) => link !== undefined);
+
+  return links.length > 0 ? [`🔗 Socials: ${links.join(" · ")}`] : [];
+}
+
+/**
+ * @param {string} label
+ * @param {string | undefined} value
+ */
+function formatSocialLink(label, value) {
+  const url = safeHttpUrl(value);
+  return url === undefined ? undefined : formatLink(label, url);
+}
+
+/** @param {string | undefined} value */
+function safeHttpUrl(value) {
+  const candidate = value?.trim();
+  if (!candidate) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**

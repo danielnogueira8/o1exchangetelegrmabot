@@ -20,7 +20,10 @@ export function calculateNextPollDelay(pollStartedAt, pollFinishedAt, intervalMs
  *   chainIds: number[],
  *   rules: AlertRules,
  *   now?: Date,
- *   o1Client: { listTokens(chainId: number): Promise<O1Token[]> },
+ *   o1Client: {
+ *     listTokens(chainId: number): Promise<O1Token[]>,
+ *     getTokenDetails?(chainId: number, tokenAddress: string): Promise<O1Token>
+ *   },
  *   notifier: { sendTokenAlert(token: O1Token, now?: Date): Promise<DeliveryResult> },
  *   alertStore: {
  *     claimAlert(chainId: number, tokenAddress: string): boolean | Promise<boolean>,
@@ -84,10 +87,28 @@ export async function runPoll({
         continue;
       }
 
+      let alertToken = token;
+      if (o1Client.getTokenDetails !== undefined) {
+        try {
+          const details = await o1Client.getTokenDetails(
+            token.chain_id,
+            token.token.address,
+          );
+          alertToken = withTokenSocials(token, details);
+        } catch (error) {
+          summary.errors += 1;
+          logger.error("Failed to fetch optional token socials", {
+            chainId: token.chain_id,
+            tokenAddress: token.token.address,
+            error,
+          });
+        }
+      }
+
       /** @type {DeliveryResult} */
       let deliveryResult;
       try {
-        deliveryResult = await notifier.sendTokenAlert(token, now);
+        deliveryResult = await notifier.sendTokenAlert(alertToken, now);
       } catch (error) {
         summary.errors += 1;
         logger.error("Failed to deliver token alert", {
@@ -111,6 +132,22 @@ export async function runPoll({
   }
 
   return summary;
+}
+
+/**
+ * @param {O1Token} token
+ * @param {O1Token} details
+ */
+function withTokenSocials(token, details) {
+  return {
+    ...token,
+    token: {
+      ...token.token,
+      website: details.token.website,
+      x: details.token.x,
+      telegram: details.token.telegram,
+    },
+  };
 }
 
 /**

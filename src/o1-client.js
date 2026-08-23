@@ -39,6 +39,32 @@ export class O1Client {
     url.searchParams.set("sort", "newest");
     url.searchParams.set("limit", "100");
 
+    const data = await this.#requestData(url);
+    if (!Array.isArray(data)) {
+      throw new Error("o1 API response did not contain a token list");
+    }
+    return /** @type {O1Token[]} */ (data);
+  }
+
+  /**
+   * @param {number} chainId
+   * @param {string} tokenAddress
+   */
+  async getTokenDetails(chainId, tokenAddress) {
+    const url = new URL(
+      `https://api.launch.o1.exchange/v1/tokens/${chainId}/${encodeURIComponent(tokenAddress)}`,
+    );
+    url.searchParams.set("include", "market");
+
+    const data = await this.#requestData(url);
+    if (data === null || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("o1 API response did not contain token details");
+    }
+    return /** @type {O1Token} */ (data);
+  }
+
+  /** @param {URL} url */
+  async #requestData(url) {
     for (let attempt = 0; attempt < MAX_REQUEST_ATTEMPTS; attempt += 1) {
       const response = await this.#fetch(url, {
         headers: {
@@ -56,9 +82,9 @@ export class O1Client {
         throw new Error(`o1 API request failed with status ${response.status}`);
       }
 
-      const payload = /** @type {{ data?: O1Token[] }} */ (await response.json());
-      if (!Array.isArray(payload.data)) {
-        throw new Error("o1 API response did not contain a token list");
+      const payload = /** @type {unknown} */ (await response.json());
+      if (payload === null || typeof payload !== "object" || !("data" in payload)) {
+        throw new Error("o1 API response did not contain data");
       }
 
       return payload.data;
