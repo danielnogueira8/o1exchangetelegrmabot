@@ -6,7 +6,7 @@ import { NotificationRejectedError } from "./notification-error.js";
 /** @typedef {import("./types.js").AlertRules} AlertRules */
 /** @typedef {import("./types.js").DeliveryResult} DeliveryResult */
 
-const OPTIONAL_SOCIALS_BUDGET_MS = 5_000;
+const OPTIONAL_DETAILS_BUDGET_MS = 5_000;
 
 /**
  * @param {number} pollStartedAt
@@ -41,7 +41,7 @@ export async function runPoll({
   alertStore,
   logger,
 }) {
-  const optionalSocialsDeadline = Date.now() + OPTIONAL_SOCIALS_BUDGET_MS;
+  const optionalDetailsDeadline = Date.now() + OPTIONAL_DETAILS_BUDGET_MS;
   const summary = {
     fetched: 0,
     qualified: 0,
@@ -89,24 +89,24 @@ export async function runPoll({
       }
 
       let alertToken = token;
-      const optionalSocialsTimeLeft = optionalSocialsDeadline - Date.now();
+      const optionalDetailsTimeLeft = optionalDetailsDeadline - Date.now();
       if (
         o1Client.getTokenDetails !== undefined &&
-        optionalSocialsTimeLeft > 0
+        optionalDetailsTimeLeft > 0
       ) {
         const getTokenDetails = o1Client.getTokenDetails.bind(o1Client);
         try {
-          const details = await withOptionalSocialsDeadline(
+          const details = await withOptionalDetailsDeadline(
             (signal) =>
               getTokenDetails(token.chain_id, token.token.address, {
                 signal,
               }),
-            optionalSocialsTimeLeft,
+            optionalDetailsTimeLeft,
           );
-          alertToken = withTokenSocials(token, details);
+          alertToken = withTokenDetails(token, details);
         } catch (error) {
           summary.errors += 1;
-          logger.error("Failed to fetch optional token socials", {
+          logger.error("Failed to fetch optional token details", {
             chainId: token.chain_id,
             tokenAddress: token.token.address,
             error,
@@ -149,12 +149,12 @@ export async function runPoll({
  * @param {number} timeoutMs
  * @returns {Promise<T>}
  */
-async function withOptionalSocialsDeadline(operation, timeoutMs) {
+async function withOptionalDetailsDeadline(operation, timeoutMs) {
   const abortController = new AbortController();
   /** @type {ReturnType<typeof setTimeout> | undefined} */
   let timeout;
   const timeoutError = new Error(
-    `Optional token socials request timed out after ${timeoutMs}ms`,
+    `Optional token details request timed out after ${timeoutMs}ms`,
   );
   const deadline = new Promise((_, reject) => {
     timeout = setTimeout(() => {
@@ -174,11 +174,12 @@ async function withOptionalSocialsDeadline(operation, timeoutMs) {
  * @param {O1Token} token
  * @param {O1Token} details
  */
-function withTokenSocials(token, details) {
+function withTokenDetails(token, details) {
   return {
     ...token,
     token: {
       ...token.token,
+      description: details.token.description,
       website: details.token.website,
       x: details.token.x,
       telegram: details.token.telegram,

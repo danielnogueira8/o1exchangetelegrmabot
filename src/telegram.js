@@ -119,6 +119,7 @@ export function formatTokenAlert(token, now = new Date()) {
     `💵 Price: ${formatPrice(marketData?.price?.usd)}`,
     `💰 Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
     `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
+    ...formatDescription(token.token.description),
     "",
     "📊 <b>Activity</b>",
     formatActivity("1h", marketData),
@@ -132,6 +133,12 @@ export function formatTokenAlert(token, now = new Date()) {
     )}`,
     ...formatSocialLinks(token.token),
   ].join("\n");
+}
+
+/** @param {string | undefined} description */
+function formatDescription(description) {
+  const value = description?.trim();
+  return value ? [`📝 About: ${escapeHtml(value)}`] : [];
 }
 
 /** @param {O1Token["token"]} token */
