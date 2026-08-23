@@ -2,6 +2,7 @@ import { NotificationRejectedError } from "./notification-error.js";
 
 /** @typedef {import("./types.js").O1Token} O1Token */
 /** @typedef {import("./types.js").TokenActivity} TokenActivity */
+/** @typedef {"1h" | "6h" | "24h"} ActivityPeriod */
 
 const CHAIN_NAMES = new Map([
   [8453, "Base"],
@@ -114,9 +115,9 @@ export function formatTokenAlert(token, now = new Date()) {
     `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
     "",
     "📊 <b>Activity</b>",
-    formatActivity("1h", marketData?.activity?.["1h"]),
-    formatActivity("6h", marketData?.activity?.["6h"]),
-    formatActivity("24h", marketData?.activity?.["24h"]),
+    formatActivity("1h", marketData),
+    formatActivity("6h", marketData),
+    formatActivity("24h", marketData),
     "",
     `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
     `👤 Creator: ${formatLink(
@@ -147,11 +148,13 @@ function debankProfileUrl(creatorAddress) {
 }
 
 /**
- * @param {string} period
- * @param {TokenActivity | undefined} activity
+ * @param {ActivityPeriod} period
+ * @param {O1Token["market_data"]} marketData
  */
-function formatActivity(period, activity) {
+function formatActivity(period, marketData) {
   const icon = ACTIVITY_ICONS.get(period) ?? "📊";
+  /** @type {TokenActivity | undefined} */
+  const activity = marketData?.activity?.[period];
   const trades = activity?.trades;
   const tradeLabel = trades === 1 ? "trade" : "trades";
   const formattedTrades = typeof trades === "number" ? trades.toLocaleString("en-US") : "n/a";
