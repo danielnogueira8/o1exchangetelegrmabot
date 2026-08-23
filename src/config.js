@@ -41,7 +41,7 @@ export function loadConfig(environment = process.env) {
       }),
     }),
     pollIntervalMs: pollIntervalSeconds * 1_000,
-    sqlitePath: optionalString(environment.SQLITE_PATH) ?? "./data/alerts.sqlite",
+    databaseUrl: requiredString(environment.DATABASE_URL, "DATABASE_URL"),
     dryRun,
     runOnce: parseBoolean(environment.RUN_ONCE, false, "RUN_ONCE"),
   };

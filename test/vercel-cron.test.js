@@ -7,8 +7,10 @@ import { NOW, qualifyingToken } from "../test-support/fixtures.js";
 test("the Vercel cron endpoint rejects requests without the cron secret", async () => {
   const GET = createCronHandler({
     environment: { CRON_SECRET: "test-cron-secret" },
-    createRedis() {
-      assert.fail("unauthorized requests must not connect to Redis");
+    database: {
+      async query() {
+        assert.fail("unauthorized requests must not connect to Neon");
+      },
     },
     logger: { info() {}, error() {} },
   });
@@ -21,19 +23,17 @@ test("the Vercel cron endpoint rejects requests without the cron secret", async 
 
 test("the Vercel cron endpoint skips an overlapping invocation", async () => {
   const GET = createCronHandler({
-    environment: { CRON_SECRET: "test-cron-secret" },
-    createRedis() {
-      return {
-        async set() {
-          return null;
-        },
-        async del() {
-          return 0;
-        },
-        async eval() {
-          return 0;
-        },
-      };
+    environment: {
+      CRON_SECRET: "test-cron-secret",
+      DATABASE_URL: "postgresql://example.test/neondb",
+      O1_API_KEY: "test-o1-key",
+      DRY_RUN: "true",
+    },
+    database: {
+      async query(statement) {
+        assert.match(statement, /INSERT INTO poll_locks/);
+        return [];
+      },
     },
     logger: { info() {}, error() {} },
   });
@@ -53,7 +53,7 @@ test("the Vercel cron endpoint skips an overlapping invocation", async () => {
 
 test("an authorized Vercel cron invocation runs one live poll", async () => {
   /** @type {string[]} */
-  const recordedKeys = [];
+  const recordedClaims = [];
   /** @type {string[]} */
   const sentAddresses = [];
   /** @type {string | undefined} */
@@ -63,30 +63,28 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
   const GET = createCronHandler({
     environment: {
       CRON_SECRET: "test-cron-secret",
+      DATABASE_URL: "postgresql://example.test/neondb",
       O1_API_KEY: "test-o1-key",
       TELEGRAM_BOT_TOKEN: "test-bot-token",
       TELEGRAM_CHAT_ID: "test-chat-id",
       DRY_RUN: "false",
     },
-    createRedis() {
-      return {
-        async set(key, value) {
-          if (key === "o1:poll-lock") {
-            lockOwner = value;
-          } else {
-            recordedKeys.push(key);
-          }
-          return "OK";
-        },
-        async del() {
-          return 1;
-        },
-        /** @param {string} _script @param {string[]} _keys @param {string[]} args */
-        async eval(_script, _keys, args) {
-          releasedOwner = args[0];
-          return lockOwner === releasedOwner ? 1 : 0;
-        },
-      };
+    database: {
+      async query(statement, parameters = []) {
+        if (statement.startsWith("INSERT INTO poll_locks")) {
+          lockOwner = /** @type {string} */ (parameters[1]);
+          return [{ lock_name: "o1:poll-lock" }];
+        }
+        if (statement.startsWith("INSERT INTO claimed_alerts")) {
+          recordedClaims.push(`${parameters[0]}:${parameters[1]}`);
+          return [{ chain_id: 8453 }];
+        }
+        if (statement.startsWith("DELETE FROM poll_locks")) {
+          releasedOwner = /** @type {string} */ (parameters[1]);
+          return lockOwner === releasedOwner ? [{ lock_name: "o1:poll-lock" }] : [];
+        }
+        assert.fail(`Unexpected Neon query: ${statement}`);
+      },
     },
     o1Client: {
       async listTokens(chainId) {
@@ -112,7 +110,7 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
 
   assert.equal(response.status, 200);
   assert.deepEqual(sentAddresses, ["0x1234"]);
-  assert.deepEqual(recordedKeys, ["o1:alerts:8453:0x1234"]);
+  assert.deepEqual(recordedClaims, ["8453:0x1234"]);
   assert.ok(lockOwner);
   assert.equal(releasedOwner, lockOwner);
   assert.deepEqual(await response.json(), {
@@ -134,25 +132,23 @@ test("the Vercel cron endpoint releases its owned lock when polling fails", asyn
   const GET = createCronHandler({
     environment: {
       CRON_SECRET: "test-cron-secret",
+      DATABASE_URL: "postgresql://example.test/neondb",
       O1_API_KEY: "test-o1-key",
       DRY_RUN: "true",
     },
-    createRedis() {
-      return {
-        async set(_key, value) {
-          lockOwner = value;
-          return "OK";
-        },
-        async del() {
-          return 1;
-        },
-        /** @param {string} _script @param {string[]} _keys @param {string[]} args */
-        async eval(_script, _keys, args) {
+    database: {
+      async query(statement, parameters = []) {
+        if (statement.startsWith("INSERT INTO poll_locks")) {
+          lockOwner = /** @type {string} */ (parameters[1]);
+          return [{ lock_name: "o1:poll-lock" }];
+        }
+        if (statement.startsWith("DELETE FROM poll_locks")) {
           releaseCalls += 1;
-          assert.equal(args[0], lockOwner);
-          return 1;
-        },
-      };
+          assert.equal(parameters[1], lockOwner);
+          return [{ lock_name: "o1:poll-lock" }];
+        }
+        assert.fail(`Unexpected Neon query: ${statement}`);
+      },
     },
     now() {
       throw new Error("clock unavailable");

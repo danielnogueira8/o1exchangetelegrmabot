@@ -16,12 +16,11 @@
     "check": "npm run typecheck && npm test"
   },
   "dependencies": {
-    "@upstash/redis": "^1.38.2",
-    "better-sqlite3": "^13.0.3",
+    "@neondatabase/serverless": "^1.1.0",
     "dotenv": "^17.4.2"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^26.2.0",
     "typescript": "^7.0.2"
   }
 }

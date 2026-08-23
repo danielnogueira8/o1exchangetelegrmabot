@@ -1,6 +1,6 @@
 # o1 Exchange Telegram Bot
 
-A small Node.js service that watches new o1 Launchpad pairs and sends one Telegram alert per qualifying pair. It polls the official o1 API, applies configurable thresholds, and stores alert identities so restarts do not create duplicates. Local and Docker runs use SQLite; Vercel uses Upstash Redis.
+A small Node.js service that watches new o1 Launchpad pairs and sends one Telegram alert per qualifying pair. It polls the official o1 API, applies configurable thresholds, and stores alert identities in Neon Postgres so restarts and Vercel invocations do not create duplicates.
 
 ## Default behavior
 
@@ -25,7 +25,7 @@ npm install
 cp .env.example .env
 ```
 
-Fill in `.env` with an o1 key that has only the `tokens:read` scope. The key is created on the [o1 developer page](https://launch.o1.exchange/developers).
+Fill in `.env` with an o1 key that has only the `tokens:read` scope and a pooled Neon `DATABASE_URL`. The key is created on the [o1 developer page](https://launch.o1.exchange/developers).
 
 Before enabling Telegram, verify the feed with a single dry run:
 
@@ -33,7 +33,7 @@ Before enabling Telegram, verify the feed with a single dry run:
 DRY_RUN=true RUN_ONCE=true npm start
 ```
 
-Dry-run alerts are printed but are not stored in SQLite. This means those tokens can still be delivered when live mode is enabled.
+Dry-run alerts are printed but their temporary claims are released, so those tokens can still be delivered when live mode is enabled.
 
 ## Telegram setup
 
@@ -47,13 +47,16 @@ Dry-run alerts are printed but are not stored in SQLite. This means those tokens
 npm start
 ```
 
-The first live poll sends every qualifying token in the newest-100 window that is not already in SQLite. After that, each chain and token address is alerted only once.
+The first live poll sends every qualifying token in the newest-100 window that is not already in Neon. After that, each chain and token address is alerted only once.
+
+If you are switching from an earlier SQLite or Upstash version, Neon starts with a new alert history. A qualifying pair from the preceding 24 hours can therefore be sent once again immediately after the switch.
 
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | ---: | --- |
 | `O1_API_KEY` | required | Server-side o1 Launchpad key |
+| `DATABASE_URL` | required | Pooled Neon Postgres connection string |
 | `TELEGRAM_BOT_TOKEN` | required in live mode | Token issued by BotFather |
 | `TELEGRAM_CHAT_ID` | required in live mode | Destination user, group, or channel ID |
 | `CHAIN_IDS` | `8453,143,4663` | Comma-separated chains to poll |
@@ -62,12 +65,9 @@ The first live poll sends every qualifying token in the newest-100 window that i
 | `MINIMUM_MARKET_CAP_USD` | `50000` | One side of the qualification rule |
 | `MINIMUM_24H_VOLUME_USD` | `10000` | Other side of the qualification rule |
 | `POLL_INTERVAL_SECONDS` | `60` | Local start-to-start cadence (30–60 seconds) |
-| `SQLITE_PATH` | `./data/alerts.sqlite` | Persistent alert database |
 | `DRY_RUN` | `false` | Print alerts without Telegram or persistence |
 | `RUN_ONCE` | `false` | Poll once and exit |
 | `CRON_SECRET` | required on Vercel | Protects the cron endpoint |
-| `UPSTASH_REDIS_REST_URL` | required on Vercel | Added by the Upstash integration |
-| `UPSTASH_REDIS_REST_TOKEN` | required on Vercel | Added by the Upstash integration |
 
 Keep `.env` private. It is ignored by Git and excluded from Docker builds.
 
@@ -81,34 +81,36 @@ This runs static type checking and the full behavior test suite.
 
 ## Deploy on Vercel
 
-Vercel's one-minute cron schedule requires a **Pro or Enterprise plan**. Hobby cron jobs can run only once per day, so Hobby cannot provide this bot's intended alert speed.
+Vercel's one-minute cron schedule requires a **Pro or Enterprise plan**. Hobby cron jobs can run only once per day, so use an external scheduler if you need the intended alert speed without upgrading.
 
 1. Import this GitHub repository into Vercel.
-2. In the Vercel project, open **Storage**, create an **Upstash Redis** database, and connect it to the project. Vercel will add `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` automatically.
+2. Create a Neon database and copy its pooled connection string.
 3. Add these Production environment variables:
    - `O1_API_KEY`
+   - `DATABASE_URL`
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_CHAT_ID`
    - `DRY_RUN=false`
    - `CRON_SECRET` with a random value of at least 16 characters
 4. Deploy to Production.
 
-The included `vercel.json` invokes `/api/cron` every minute. The function verifies `CRON_SECRET`, obtains a short Redis lock to prevent overlapping invocations, polls all configured chains, and uses Redis keys for durable deduplication. Vercel only runs cron jobs for Production deployments.
+The included `vercel.json` invokes `/api/cron` every minute on eligible Vercel plans. The function verifies `CRON_SECRET`, obtains a short Postgres lock to prevent overlapping invocations, polls all configured chains, and uses Postgres for durable deduplication. Vercel only runs cron jobs for Production deployments.
 
-Local `.env` values are never uploaded automatically; add secrets through the Vercel dashboard or CLI. Do not configure `SQLITE_PATH` on Vercel because Vercel Functions do not provide a persistent writable filesystem.
+Local `.env` values are never uploaded automatically; add secrets through the Vercel dashboard or CLI. The two required tables are created automatically on their first use.
 
 ## Run continuously with Docker
 
-Build and start the service with a persistent SQLite volume:
+Build and start the service with its Neon environment file:
 
 ```bash
-docker compose up -d --build
+docker build -t o1-exchange-telegram-bot .
+docker run -d --name o1-exchange-telegram-bot --restart unless-stopped --env-file .env o1-exchange-telegram-bot
 ```
 
 Inspect its output with:
 
 ```bash
-docker compose logs -f bot
+docker logs -f o1-exchange-telegram-bot
 ```
 
-The container restarts automatically unless explicitly stopped. The `o1-alert-data` volume preserves deduplication history across deployments.
+Neon preserves deduplication history across container and deployment restarts.

@@ -6,6 +6,7 @@ import { loadConfig } from "../src/config.js";
 test("dry-run configuration loads safe defaults without Telegram credentials", () => {
   const config = loadConfig({
     O1_API_KEY: "test-o1-key",
+    DATABASE_URL: "postgresql://example.test/neondb",
     DRY_RUN: "true",
   });
 
@@ -21,7 +22,7 @@ test("dry-run configuration loads safe defaults without Telegram credentials", (
       minimum24HourVolumeUsd: 10_000,
     },
     pollIntervalMs: 60_000,
-    sqlitePath: "./data/alerts.sqlite",
+    databaseUrl: "postgresql://example.test/neondb",
     dryRun: true,
     runOnce: false,
   });
@@ -29,7 +30,12 @@ test("dry-run configuration loads safe defaults without Telegram credentials", (
 
 test("live mode requires both Telegram credentials", () => {
   assert.throws(
-    () => loadConfig({ O1_API_KEY: "test-o1-key", DRY_RUN: "false" }),
+    () =>
+      loadConfig({
+        O1_API_KEY: "test-o1-key",
+        DATABASE_URL: "postgresql://example.test/neondb",
+        DRY_RUN: "false",
+      }),
     /TELEGRAM_BOT_TOKEN is required when DRY_RUN is false/,
   );
 
@@ -37,6 +43,7 @@ test("live mode requires both Telegram credentials", () => {
     () =>
       loadConfig({
         O1_API_KEY: "test-o1-key",
+        DATABASE_URL: "postgresql://example.test/neondb",
         TELEGRAM_BOT_TOKEN: "test-bot-token",
         DRY_RUN: "false",
       }),
@@ -50,10 +57,18 @@ test("polling must stay within the requested 30-to-60-second window", () => {
       () =>
         loadConfig({
           O1_API_KEY: "test-o1-key",
+          DATABASE_URL: "postgresql://example.test/neondb",
           DRY_RUN: "true",
           POLL_INTERVAL_SECONDS: pollInterval,
         }),
       /POLL_INTERVAL_SECONDS must be between 30 and 60/,
     );
   }
+});
+
+test("DATABASE_URL is required for durable alert storage", () => {
+  assert.throws(
+    () => loadConfig({ O1_API_KEY: "test-o1-key", DRY_RUN: "true" }),
+    /DATABASE_URL is required/,
+  );
 });

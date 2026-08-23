@@ -1,13 +1,15 @@
 import "dotenv/config";
 
-import { AlertStore } from "./alert-store.js";
 import { loadConfig } from "./config.js";
+import { NeonAlertStore } from "./neon-alert-store.js";
+import { NeonDatabase } from "./neon-database.js";
 import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
 import { calculateNextPollDelay, runPoll } from "./poll.js";
 
 const config = loadConfig();
-const alertStore = new AlertStore(config.sqlitePath);
+const database = new NeonDatabase(config.databaseUrl);
+const alertStore = new NeonAlertStore(database);
 const o1Client = new O1Client({
   apiKey: config.o1ApiKey,
   market: config.market,
@@ -26,32 +28,28 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-try {
-  console.info("Starting o1 token monitor", {
-    chains: config.chainIds,
-    pollIntervalSeconds: config.pollIntervalMs / 1_000,
-    dryRun: config.dryRun,
+console.info("Starting o1 token monitor", {
+  chains: config.chainIds,
+  pollIntervalSeconds: config.pollIntervalMs / 1_000,
+  dryRun: config.dryRun,
+});
+
+do {
+  const pollStartedAt = Date.now();
+  const summary = await runPoll({
+    chainIds: config.chainIds,
+    rules: config.rules,
+    o1Client,
+    notifier,
+    alertStore,
+    logger: console,
   });
+  console.info("Poll complete", summary);
 
-  do {
-    const pollStartedAt = Date.now();
-    const summary = await runPoll({
-      chainIds: config.chainIds,
-      rules: config.rules,
-      o1Client,
-      notifier,
-      alertStore,
-      logger: console,
-    });
-    console.info("Poll complete", summary);
-
-    if (!config.runOnce && !stopping) {
-      await wait(calculateNextPollDelay(pollStartedAt, Date.now(), config.pollIntervalMs));
-    }
-  } while (!config.runOnce && !stopping);
-} finally {
-  alertStore.close();
-}
+  if (!config.runOnce && !stopping) {
+    await wait(calculateNextPollDelay(pollStartedAt, Date.now(), config.pollIntervalMs));
+  }
+} while (!config.runOnce && !stopping);
 
 /** @param {number} milliseconds */
 function wait(milliseconds) {
