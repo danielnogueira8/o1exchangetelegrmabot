@@ -11,6 +11,11 @@ const CHAIN_NAMES = new Map([
 const SIGMA_BUY_BOT_URL = "https://t.me/Sigma_buyBot";
 const SIGMA_START_PREFIX = "x699691974";
 const DEBANK_PROFILE_URL = "https://debank.com/profile/";
+const ACTIVITY_ICONS = new Map([
+  ["1h", "⚡"],
+  ["6h", "📈"],
+  ["24h", "📅"],
+]);
 
 const wholeUsdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -101,20 +106,20 @@ export function formatTokenAlert(token, now = new Date()) {
   return [
     "🚀 <b>New o1 pair</b>",
     "",
-    `<b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
-    `Chain: ${escapeHtml(chainName)}`,
-    `Launched: ${formatAge(token.launch.created_at, now)} ago`,
-    `Price: ${formatPrice(marketData?.price?.usd)}`,
-    `Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
-    `Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
+    `🪙 <b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
+    `⛓️ Chain: ${escapeHtml(chainName)}`,
+    `🕒 Launched: ${formatAge(token.launch.created_at, now)} ago`,
+    `💵 Price: ${formatPrice(marketData?.price?.usd)}`,
+    `💰 Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
+    `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
     "",
-    "<b>Activity</b>",
+    "📊 <b>Activity</b>",
     formatActivity("1h", marketData?.activity?.["1h"]),
     formatActivity("6h", marketData?.activity?.["6h"]),
     formatActivity("24h", marketData?.activity?.["24h"]),
     "",
-    `Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
-    `Creator: ${formatLink(
+    `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
+    `👤 Creator: ${formatLink(
       token.launch.creator_address,
       debankProfileUrl(token.launch.creator_address),
     )}`,
@@ -146,10 +151,11 @@ function debankProfileUrl(creatorAddress) {
  * @param {TokenActivity | undefined} activity
  */
 function formatActivity(period, activity) {
+  const icon = ACTIVITY_ICONS.get(period) ?? "📊";
   const trades = activity?.trades;
   const tradeLabel = trades === 1 ? "trade" : "trades";
   const formattedTrades = typeof trades === "number" ? trades.toLocaleString("en-US") : "n/a";
-  return `${period}: ${formattedTrades} ${tradeLabel} · ${formatWholeUsd(activity?.volume_usd)} volume`;
+  return `${icon} ${period}: ${formattedTrades} ${tradeLabel} · ${formatWholeUsd(activity?.volume_usd)} volume`;
 }
 
 /** @param {number | undefined} value */

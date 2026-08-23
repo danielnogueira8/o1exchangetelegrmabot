@@ -36,24 +36,24 @@ function token() {
 test("the Telegram alert is readable and HTML-safe", () => {
   const message = formatTokenAlert(token(), NOW);
 
-  assert.match(message, /🚀 <b>New o1 pair<\/b>/);
-  assert.match(message, /<b>Example &lt;Moon&gt; &amp; Co \(EX&amp;\)<\/b>/);
-  assert.match(message, /Chain: Base/);
-  assert.match(message, /Launched: 2h ago/);
-  assert.match(message, /Price: \$0\.0015/);
-  assert.match(message, /Market cap: \$150,000/);
-  assert.match(message, /Liquidity: \$25,000/);
-  assert.match(message, /1h: 30 trades · \$12,000 volume/);
-  assert.ok(
-    message.includes(
-      'Token: <a href="https://t.me/Sigma_buyBot?start=x699691974-0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3">0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3</a>',
-    ),
-  );
-  assert.ok(
-    message.includes(
-      'Creator: <a href="https://debank.com/profile/0xC7937601a50669d3B4725d01201335ba46bc149A">0xC7937601a50669d3B4725d01201335ba46bc149A</a>',
-    ),
-  );
+  assert.deepEqual(message.split("\n"), [
+    "🚀 <b>New o1 pair</b>",
+    "",
+    "🪙 <b>Example &lt;Moon&gt; &amp; Co (EX&amp;)</b>",
+    "⛓️ Chain: Base",
+    "🕒 Launched: 2h ago",
+    "💵 Price: $0.0015",
+    "💰 Market cap: $150,000",
+    "💧 Liquidity: $25,000",
+    "",
+    "📊 <b>Activity</b>",
+    "⚡ 1h: 30 trades · $12,000 volume",
+    "📈 6h: 80 trades · $30,000 volume",
+    "📅 24h: 100 trades · $45,000 volume",
+    "",
+    '🛒 Token: <a href="https://t.me/Sigma_buyBot?start=x699691974-0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3">0x5F980Dcfc4c0fa3911554cf5ab288ed0eb13DBa3</a>',
+    '👤 Creator: <a href="https://debank.com/profile/0xC7937601a50669d3B4725d01201335ba46bc149A">0xC7937601a50669d3B4725d01201335ba46bc149A</a>',
+  ]);
   assert.doesNotMatch(message, /Pool:/);
   assert.doesNotMatch(message, /Example <Moon>/);
 });
