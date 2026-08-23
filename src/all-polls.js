@@ -26,15 +26,6 @@ export async function runAllPolls({
   alertStore,
   logger,
 }) {
-  const b20Summary = await runPoll({
-    chainIds: [8453],
-    rules,
-    now,
-    o1Client: b20Client,
-    notifier,
-    alertStore,
-    logger,
-  });
   const o1Summary = await runPoll({
     chainIds,
     rules,
@@ -44,5 +35,14 @@ export async function runAllPolls({
     alertStore,
     logger,
   });
-  return addPollSummaries(b20Summary, o1Summary);
+  const b20Summary = await runPoll({
+    chainIds: [8453],
+    rules,
+    now,
+    o1Client: b20Client,
+    notifier,
+    alertStore,
+    logger,
+  });
+  return addPollSummaries(o1Summary, b20Summary);
 }

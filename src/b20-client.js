@@ -17,7 +17,6 @@
  *   baseToken: { address: string, name: string, symbol: string },
  *   priceUsd?: string,
  *   marketCap?: number,
- *   fdv?: number,
  *   liquidity?: { usd?: number },
  *   volume?: { h1?: number, h6?: number, h24?: number },
  *   txns?: {
@@ -37,6 +36,7 @@ const B20_CREATED_TOPIC =
   "0xfd9bf2730513a1709722ff379a0844dfd8f997d600693c2bcc659e188bbdba0d";
 const B20_LOOKBACK_BLOCKS = 3_600;
 const DEXSCREENER_BATCH_SIZE = 30;
+const DEFAULT_MINIMUM_MARKET_CAP_USD = 100_000;
 
 export class B20Client {
   /** @type {string} */
@@ -46,15 +46,26 @@ export class B20Client {
   #fetch;
 
   /** @type {number} */
+  #minimumMarketCapUsd;
+
+  /** @type {number} */
   #requestId = 0;
 
   /** @type {Map<string, Promise<string>>} */
   #blockTimestamps = new Map();
 
-  /** @param {{ rpcUrl?: string, fetchImpl?: typeof fetch }} [options] */
-  constructor({ rpcUrl = BASE_RPC_URL, fetchImpl = fetch } = {}) {
+  /** @param {{ rpcUrl?: string, fetchImpl?: typeof fetch, minimumMarketCapUsd?: number }} [options] */
+  constructor({
+    rpcUrl = BASE_RPC_URL,
+    fetchImpl = fetch,
+    minimumMarketCapUsd = DEFAULT_MINIMUM_MARKET_CAP_USD,
+  } = {}) {
+    if (!Number.isFinite(minimumMarketCapUsd) || minimumMarketCapUsd < 0) {
+      throw new Error("B20 minimum market cap must be a non-negative number");
+    }
     this.#rpcUrl = rpcUrl;
     this.#fetch = fetchImpl;
+    this.#minimumMarketCapUsd = minimumMarketCapUsd;
   }
 
   /** @param {number} chainId */
@@ -95,7 +106,13 @@ export class B20Client {
 
     const pairs = await this.#listPairs(launches.map((launch) => launch.address));
     return launches
-      .map((launch) => tokenFromLaunch(launch, pairs.get(launch.address.toLowerCase())))
+      .map((launch) =>
+        tokenFromLaunch(
+          launch,
+          pairs.get(launch.address.toLowerCase()),
+          this.#minimumMarketCapUsd,
+        ),
+      )
       .filter((token) => token !== undefined);
   }
 
@@ -262,13 +279,18 @@ function readWord(data, index) {
 /**
  * @param {{ address: string, name: string, symbol: string, decimals: number, createdAt: string }} launch
  * @param {DexPair[] | undefined} pairs
+ * @param {number} minimumMarketCapUsd
  * @returns {O1Token | undefined}
  */
-function tokenFromLaunch(launch, pairs) {
+function tokenFromLaunch(launch, pairs, minimumMarketCapUsd) {
   const bestPair = pairs
     ?.filter(isDexPair)
     .sort((left, right) => (right.liquidity?.usd ?? 0) - (left.liquidity?.usd ?? 0))[0];
   if (bestPair === undefined) {
+    return undefined;
+  }
+  const marketCapUsd = numberValue(bestPair.marketCap);
+  if (marketCapUsd === undefined || marketCapUsd < minimumMarketCapUsd) {
     return undefined;
   }
 
@@ -289,7 +311,7 @@ function tokenFromLaunch(launch, pairs) {
     market_data: {
       data_status: "fresh",
       price: numberMetric(bestPair.priceUsd),
-      market_cap: numberMetric(bestPair.marketCap ?? bestPair.fdv),
+      market_cap: { usd: marketCapUsd },
       liquidity: numberMetric(bestPair.liquidity?.usd),
       activity: {
         "1h": activityMetric(bestPair.txns?.h1, bestPair.volume?.h1),
@@ -302,8 +324,14 @@ function tokenFromLaunch(launch, pairs) {
 
 /** @param {unknown} value */
 function numberMetric(value) {
+  const parsed = numberValue(value);
+  return parsed === undefined ? undefined : { usd: parsed };
+}
+
+/** @param {unknown} value */
+function numberValue(value) {
   const parsed = typeof value === "string" ? Number(value) : value;
-  return typeof parsed === "number" && Number.isFinite(parsed) ? { usd: parsed } : undefined;
+  return typeof parsed === "number" && Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** @param {unknown} activity @param {unknown} volume */
