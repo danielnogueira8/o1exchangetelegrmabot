@@ -9,6 +9,7 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 - Requires a launch age of less than 24 hours
 - Requires fresh market data
 - Requires either at least $10,000 in 24-hour USD volume or a $50,000 market cap
+- Adds Website, X, and Telegram links when they are published in the token's o1 details
 - Atomically claims each alert before delivery so overlapping or retried runs cannot send duplicates
 - Keeps an alert claimed after an ambiguous Telegram failure, favoring no duplicate message over an automatic retry
 - Releases the claim after an explicit Telegram rejection so a later poll can retry it

@@ -7,13 +7,14 @@ import { RedisPollLock } from "./redis-poll-lock.js";
 
 /** @typedef {import("./redis-client.js").RedisClient} RedisClient */
 /** @typedef {import("./types.js").O1Token} O1Token */
+/** @typedef {import("./types.js").O1ClientLike} O1ClientLike */
 /** @typedef {import("./types.js").DeliveryResult} DeliveryResult */
 
 /**
  * @param {{
  *   environment?: Record<string, string | undefined>,
  *   createRedis: () => RedisClient,
- *   o1Client?: { listTokens(chainId: number): Promise<O1Token[]> },
+ *   o1Client?: O1ClientLike,
  *   notifier?: { sendTokenAlert(token: O1Token, now?: Date): Promise<DeliveryResult> },
  *   now?: () => Date,
  *   logger?: { info(...values: unknown[]): void, error(...values: unknown[]): void }

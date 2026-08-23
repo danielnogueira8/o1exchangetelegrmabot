@@ -60,6 +60,107 @@ test("one poll claims and sends an unseen qualifying token", async () => {
   });
 });
 
+test("one poll enriches a new alert with optional token socials", async () => {
+  const listedToken = qualifyingToken();
+  const detailedToken = /** @type {import("../src/types.js").O1Token} */ (
+    structuredClone(listedToken)
+  );
+  detailedToken.token.website = "https://example.com";
+  detailedToken.token.x = "https://x.com/example";
+  detailedToken.token.telegram = "https://t.me/example";
+  let detailRequests = 0;
+
+  const summary = await runPoll({
+    chainIds: [8453],
+    rules,
+    now: NOW,
+    o1Client: {
+      async listTokens() {
+        return [listedToken];
+      },
+      async getTokenDetails(chainId, tokenAddress) {
+        detailRequests += 1;
+        assert.equal(chainId, 8453);
+        assert.equal(tokenAddress, "0x1234");
+        return detailedToken;
+      },
+    },
+    notifier: {
+      async sendTokenAlert(token) {
+        assert.equal(token.token.website, "https://example.com");
+        assert.equal(token.token.x, "https://x.com/example");
+        assert.equal(token.token.telegram, "https://t.me/example");
+        return "delivered";
+      },
+    },
+    alertStore: {
+      claimAlert() {
+        return true;
+      },
+      releaseAlert() {},
+    },
+    logger: { info() {}, error() {} },
+  });
+
+  assert.equal(detailRequests, 1);
+  assert.equal(summary.sent, 1);
+});
+
+test("stalled social lookups share one budget and fall back to base alerts", async (t) => {
+  t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
+  const firstToken = qualifyingToken();
+  const secondToken = qualifyingToken();
+  secondToken.token.address = "0x5678";
+  /** @type {AbortSignal | undefined} */
+  let detailsSignal;
+  let detailRequests = 0;
+  /** @type {string[]} */
+  const sentAddresses = [];
+
+  const polling = runPoll({
+    chainIds: [8453],
+    rules,
+    now: NOW,
+    o1Client: {
+      async listTokens() {
+        return [firstToken, secondToken];
+      },
+      async getTokenDetails(_chainId, _tokenAddress, options) {
+        detailRequests += 1;
+        detailsSignal = options?.signal;
+        return new Promise(() => {});
+      },
+    },
+    notifier: {
+      async sendTokenAlert(token) {
+        sentAddresses.push(token.token.address);
+        return "delivered";
+      },
+    },
+    alertStore: {
+      claimAlert() {
+        return true;
+      },
+      releaseAlert() {},
+    },
+    logger: { info() {}, error() {} },
+  });
+
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(10_000);
+  const summary = await Promise.race([
+    polling,
+    new Promise((resolve) => setImmediate(() => resolve(undefined))),
+  ]);
+
+  assert.notEqual(summary, undefined, "the poll remained stalled");
+  assert.equal(detailRequests, 1);
+  assert.equal(detailsSignal?.aborted, true);
+  assert.deepEqual(sentAddresses, ["0x1234", "0x5678"]);
+  assert.equal(summary?.sent, 2);
+  assert.equal(summary?.errors, 1);
+});
+
 test("a failed chain does not prevent other chains from being checked", async () => {
   /** @type {string[]} */
   const sentAddresses = [];
@@ -223,6 +324,9 @@ test("an already-claimed token is not sent again", async () => {
     o1Client: {
       async listTokens() {
         return [qualifyingToken()];
+      },
+      async getTokenDetails() {
+        assert.fail("an already-claimed token must not request details");
       },
     },
     notifier: {

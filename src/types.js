@@ -13,7 +13,10 @@
  *     name: string,
  *     symbol: string,
  *     decimals?: number,
- *     image_url?: string
+ *     image_url?: string,
+ *     website?: string,
+ *     x?: string,
+ *     telegram?: string
  *   },
  *   launch: {
  *     created_at: string,
@@ -32,6 +35,15 @@
  *     }
  *   }
  * }} O1Token
+ *
+ * @typedef {{
+ *   listTokens: (chainId: number) => Promise<O1Token[]>,
+ *   getTokenDetails?: (
+ *     chainId: number,
+ *     tokenAddress: string,
+ *     options?: { signal?: AbortSignal }
+ *   ) => Promise<O1Token>
+ * }} O1ClientLike
  *
  * @typedef {{
  *   maximumAgeHours: number,

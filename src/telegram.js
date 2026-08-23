@@ -2,6 +2,7 @@ import { NotificationRejectedError } from "./notification-error.js";
 
 /** @typedef {import("./types.js").O1Token} O1Token */
 /** @typedef {import("./types.js").TokenActivity} TokenActivity */
+/** @typedef {"1h" | "6h" | "24h"} ActivityPeriod */
 
 const CHAIN_NAMES = new Map([
   [8453, "Base"],
@@ -11,6 +12,11 @@ const CHAIN_NAMES = new Map([
 const SIGMA_BUY_BOT_URL = "https://t.me/Sigma_buyBot";
 const SIGMA_START_PREFIX = "x699691974";
 const DEBANK_PROFILE_URL = "https://debank.com/profile/";
+const ACTIVITY_ICONS = new Map([
+  ["1h", "⚡"],
+  ["6h", "📈"],
+  ["24h", "📅"],
+]);
 
 const wholeUsdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -101,24 +107,60 @@ export function formatTokenAlert(token, now = new Date()) {
   return [
     "🚀 <b>New o1 pair</b>",
     "",
-    `<b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
-    `Chain: ${escapeHtml(chainName)}`,
-    `Launched: ${formatAge(token.launch.created_at, now)} ago`,
-    `Price: ${formatPrice(marketData?.price?.usd)}`,
-    `Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
-    `Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
+    `🪙 <b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
+    `⛓️ Chain: ${escapeHtml(chainName)}`,
+    `🕒 Launched: ${formatAge(token.launch.created_at, now)} ago`,
+    `💵 Price: ${formatPrice(marketData?.price?.usd)}`,
+    `💰 Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
+    `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
     "",
-    "<b>Activity</b>",
-    formatActivity("1h", marketData?.activity?.["1h"]),
-    formatActivity("6h", marketData?.activity?.["6h"]),
-    formatActivity("24h", marketData?.activity?.["24h"]),
+    "📊 <b>Activity</b>",
+    formatActivity("1h", marketData),
+    formatActivity("6h", marketData),
+    formatActivity("24h", marketData),
     "",
-    `Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
-    `Creator: ${formatLink(
+    `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
+    `👤 Creator: ${formatLink(
       token.launch.creator_address,
       debankProfileUrl(token.launch.creator_address),
     )}`,
+    ...formatSocialLinks(token.token),
   ].join("\n");
+}
+
+/** @param {O1Token["token"]} token */
+function formatSocialLinks(token) {
+  const links = [
+    formatSocialLink("🌐 Website", token.website),
+    formatSocialLink("𝕏 X", token.x),
+    formatSocialLink("✈️ Telegram", token.telegram),
+  ].filter((link) => link !== undefined);
+
+  return links.length > 0 ? [`🔗 Socials: ${links.join(" · ")}`] : [];
+}
+
+/**
+ * @param {string} label
+ * @param {string | undefined} value
+ */
+function formatSocialLink(label, value) {
+  const url = safeHttpUrl(value);
+  return url === undefined ? undefined : formatLink(label, url);
+}
+
+/** @param {string | undefined} value */
+function safeHttpUrl(value) {
+  const candidate = value?.trim();
+  if (!candidate) {
+    return undefined;
+  }
+
+  try {
+    const url = new URL(candidate);
+    return url.protocol === "https:" || url.protocol === "http:" ? candidate : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 /**
@@ -142,14 +184,17 @@ function debankProfileUrl(creatorAddress) {
 }
 
 /**
- * @param {string} period
- * @param {TokenActivity | undefined} activity
+ * @param {ActivityPeriod} period
+ * @param {O1Token["market_data"]} marketData
  */
-function formatActivity(period, activity) {
+function formatActivity(period, marketData) {
+  const icon = ACTIVITY_ICONS.get(period) ?? "📊";
+  /** @type {TokenActivity | undefined} */
+  const activity = marketData?.activity?.[period];
   const trades = activity?.trades;
   const tradeLabel = trades === 1 ? "trade" : "trades";
   const formattedTrades = typeof trades === "number" ? trades.toLocaleString("en-US") : "n/a";
-  return `${period}: ${formattedTrades} ${tradeLabel} · ${formatWholeUsd(activity?.volume_usd)} volume`;
+  return `${icon} ${period}: ${formattedTrades} ${tradeLabel} · ${formatWholeUsd(activity?.volume_usd)} volume`;
 }
 
 /** @param {number | undefined} value */
