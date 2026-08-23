@@ -8,6 +8,9 @@ const CHAIN_NAMES = new Map([
   [143, "Monad"],
   [4663, "Robinhood Chain"],
 ]);
+const SIGMA_BUY_BOT_URL = "https://t.me/Sigma_buyBot";
+const SIGMA_START_PREFIX = "x699691974";
+const DEBANK_PROFILE_URL = "https://debank.com/profile/";
 
 const wholeUsdFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -110,10 +113,32 @@ export function formatTokenAlert(token, now = new Date()) {
     formatActivity("6h", marketData?.activity?.["6h"]),
     formatActivity("24h", marketData?.activity?.["24h"]),
     "",
-    `Token: <code>${escapeHtml(token.token.address)}</code>`,
-    `Pool: <code>${escapeHtml(token.launch.pool_id)}</code>`,
-    `Creator: <code>${escapeHtml(token.launch.creator_address)}</code>`,
+    `Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
+    `Creator: ${formatLink(
+      token.launch.creator_address,
+      debankProfileUrl(token.launch.creator_address),
+    )}`,
   ].join("\n");
+}
+
+/**
+ * @param {string} label
+ * @param {string} url
+ */
+function formatLink(label, url) {
+  return `<a href="${escapeHtml(url)}">${escapeHtml(label)}</a>`;
+}
+
+/** @param {string} tokenAddress */
+function sigmaBuyUrl(tokenAddress) {
+  const url = new URL(SIGMA_BUY_BOT_URL);
+  url.searchParams.set("start", `${SIGMA_START_PREFIX}-${tokenAddress.trim()}`);
+  return url.toString();
+}
+
+/** @param {string} creatorAddress */
+function debankProfileUrl(creatorAddress) {
+  return `${DEBANK_PROFILE_URL}${encodeURIComponent(creatorAddress.trim())}`;
 }
 
 /**
