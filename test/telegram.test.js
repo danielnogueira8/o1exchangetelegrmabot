@@ -104,6 +104,9 @@ test("TelegramNotifier sends the alert as HTML to the configured chat", async ()
   assert.equal(body.parse_mode, "HTML");
   assert.equal(body.disable_web_page_preview, true);
   assert.equal(body.text, formatTokenAlert(token(), NOW));
+  assert.deepEqual(body.reply_markup, {
+    inline_keyboard: [[{ text: "✖️ Dismiss alert", callback_data: "dismiss-alert" }]],
+  });
 });
 
 test("TelegramNotifier identifies an explicit API rejection as safe to retry", async () => {
