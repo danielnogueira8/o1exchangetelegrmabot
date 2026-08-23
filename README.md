@@ -11,6 +11,7 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 - Requires fresh market data
 - Requires either at least $10,000 in 24-hour USD volume or a $50,000 market cap
 - Adds Website, X, and Telegram links when they are published in the token's o1 details
+- Adds a **Dismiss alert** button that deletes that alert message when tapped
 - Atomically claims each alert before delivery so overlapping or retried runs cannot send duplicates
 - Keeps an alert claimed after an ambiguous Telegram failure, favoring no duplicate message over an automatic retry
 - Releases the claim after an explicit Telegram rejection so a later poll can retry it
@@ -60,6 +61,7 @@ If you are switching from an earlier SQLite or Upstash version, Neon starts with
 | `DATABASE_URL` | required | Pooled Neon Postgres connection string |
 | `TELEGRAM_BOT_TOKEN` | required in live mode | Token issued by BotFather |
 | `TELEGRAM_CHAT_ID` | required in live mode | Destination user, group, or channel ID |
+| `TELEGRAM_WEBHOOK_SECRET` | required for dismiss buttons on Vercel | Verifies Telegram callback requests |
 | `CHAIN_IDS` | `8453,143,4663` | Comma-separated chains to poll |
 | `MARKET` | `all` | o1 market filter |
 | `MAXIMUM_AGE_HOURS` | `24` | Pair must be younger than this age |
@@ -91,6 +93,7 @@ Vercel hosts the app and GitHub Actions schedules it every five minutes at no ex
    - `DATABASE_URL`
    - `TELEGRAM_BOT_TOKEN`
    - `TELEGRAM_CHAT_ID`
+   - `TELEGRAM_WEBHOOK_SECRET` with a random value of at least 16 characters
    - `DRY_RUN=false`
    - `CRON_SECRET` with a random value of at least 16 characters
 4. Deploy to Production.
@@ -98,6 +101,19 @@ Vercel hosts the app and GitHub Actions schedules it every five minutes at no ex
 6. Merge the workflow into the default branch. Scheduled GitHub workflows run from the default branch only.
 
 The included GitHub workflow calls `https://o1exchangetelegrmabot.vercel.app/api/cron` every five minutes with that secret. The Vercel function verifies it, obtains a short Postgres lock to prevent overlapping invocations, polls all configured chains, and uses Postgres for durable deduplication. You can test it after deployment from **Actions → Trigger Vercel token monitor → Run workflow**.
+
+To enable the dismiss button, register `https://o1exchangetelegrmabot.vercel.app/api/telegram` as the bot's Telegram webhook with the same `TELEGRAM_WEBHOOK_SECRET`. After the Vercel deployment is ready, run this from a shell where `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are set:
+
+```bash
+curl --fail-with-body -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook" \
+  --data-urlencode "url=https://o1exchangetelegrmabot.vercel.app/api/telegram" \
+  --data-urlencode "secret_token=${TELEGRAM_WEBHOOK_SECRET}" \
+  --data-urlencode 'allowed_updates=["callback_query"]'
+
+curl --fail-with-body "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Telegram sends only the button callback to that endpoint; the endpoint verifies its secret and deletes the matching alert.
 
 Local `.env` values are never uploaded automatically; add secrets through the Vercel dashboard or CLI. The two required tables are created automatically on their first use.
 

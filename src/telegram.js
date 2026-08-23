@@ -12,6 +12,7 @@ const CHAIN_NAMES = new Map([
 const SIGMA_BUY_BOT_URL = "https://t.me/Sigma_buyBot";
 const SIGMA_START_PREFIX = "x699691974";
 const DEBANK_PROFILE_URL = "https://debank.com/profile/";
+export const DISMISS_ALERT_CALLBACK_DATA = "dismiss-alert";
 const ACTIVITY_ICONS = new Map([
   ["1h", "⚡"],
   ["6h", "📈"],
@@ -58,6 +59,11 @@ export class TelegramNotifier {
           text: formatTokenAlert(token, now),
           parse_mode: "HTML",
           disable_web_page_preview: true,
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "✖️ Dismiss alert", callback_data: DISMISS_ALERT_CALLBACK_DATA }],
+            ],
+          },
         }),
       },
     );
