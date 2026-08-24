@@ -43,6 +43,8 @@ const TRANSFER_TOPIC =
 const ROLE_GRANTED_TOPIC =
   "0x2f8788117e7eff1d82e926ec794901d17c78024a50270940304540a733656f0d";
 const ZERO_WORD = `0x${"0".repeat(64)}`;
+const BLOCKSCOUT_BASE_API_URL = "https://base.blockscout.com/api";
+const BLOCKSCOUT_TIMEOUT_MILLISECONDS = 4_000;
 
 export class B20Client {
   /** @type {string} */
@@ -149,10 +151,11 @@ export class B20Client {
 
     const caller = transaction.from;
     const previousBlock = previousBlockTag(launch.blockNumber);
-    const [codeResult, balanceResult, receiptResult] = await Promise.allSettled([
+    const [codeResult, balanceResult, receiptResult, firstActivityResult] = await Promise.allSettled([
       this.#rpc("eth_getCode", [caller, launch.blockNumber]),
       this.#rpc("eth_getBalance", [caller, previousBlock]),
       this.#rpc("eth_getTransactionReceipt", [launch.transactionHash]),
+      this.#baseWalletFirstActivity(caller),
     ]);
 
     const alpha = {
@@ -168,11 +171,55 @@ export class B20Client {
       ...(balanceResult.status === "fulfilled" && typeof balanceResult.value === "string"
         ? { prelaunch_eth: formatWeiAsEth(balanceResult.value) }
         : {}),
+      ...(firstActivityResult.status === "fulfilled" && firstActivityResult.value !== undefined
+        ? { base_wallet_first_activity_at: firstActivityResult.value }
+        : {}),
       ...(receiptResult.status === "fulfilled"
         ? launchReceiptAlpha(receiptResult.value, token.token.address)
         : {}),
     };
     return { ...token, launch: { ...token.launch, alpha } };
+  }
+
+  /** @param {string} address */
+  async #baseWalletFirstActivity(address) {
+    const url = new URL(BLOCKSCOUT_BASE_API_URL);
+    url.search = new URLSearchParams({
+      module: "account",
+      action: "txlist",
+      address,
+      page: "1",
+      offset: "1",
+      sort: "asc",
+    }).toString();
+    const response = await this.#fetch(url, {
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(BLOCKSCOUT_TIMEOUT_MILLISECONDS),
+    });
+    if (!response.ok) {
+      throw new Error(`Blockscout request failed with status ${response.status}`);
+    }
+    const payload = /** @type {unknown} */ (await response.json());
+    if (
+      payload === null ||
+      typeof payload !== "object" ||
+      !("result" in payload) ||
+      !Array.isArray(payload.result) ||
+      payload.result.length === 0
+    ) {
+      return undefined;
+    }
+    const firstTransaction = payload.result[0];
+    if (
+      firstTransaction === null ||
+      typeof firstTransaction !== "object" ||
+      !("timeStamp" in firstTransaction) ||
+      typeof firstTransaction.timeStamp !== "string"
+    ) {
+      return undefined;
+    }
+    const firstActivityAt = new Date(Number(BigInt(firstTransaction.timeStamp)) * 1_000).toISOString();
+    return Number.isFinite(Date.parse(firstActivityAt)) ? firstActivityAt : undefined;
   }
 
   /** @param {DecodedB20Launch} launch */

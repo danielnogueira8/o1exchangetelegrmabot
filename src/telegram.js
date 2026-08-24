@@ -117,7 +117,7 @@ export function formatTokenAlert(token, now = new Date()) {
     `⛓️ Chain: ${escapeHtml(chainName)}`,
     `🕒 Launched: ${formatAge(token.launch.created_at, now)} ago`,
     ...formatLaunchSource(token.launch.source),
-    ...formatLaunchAlpha(token.launch.alpha),
+    ...formatLaunchAlpha(token.launch.alpha, now),
     `💵 Price: ${formatPrice(marketData?.price?.usd)}`,
     `💰 Market cap: ${formatWholeUsd(marketData?.market_cap?.usd)}`,
     `💧 Liquidity: ${formatWholeUsd(marketData?.liquidity?.usd)}`,
@@ -148,8 +148,8 @@ function formatLaunchSource(source) {
   return value ? [`🏭 Launch source: ${escapeHtml(value)}`] : [];
 }
 
-/** @param {O1Token["launch"]["alpha"]} alpha */
-function formatLaunchAlpha(alpha) {
+/** @param {O1Token["launch"]["alpha"]} alpha @param {Date} now */
+function formatLaunchAlpha(alpha, now) {
   if (alpha === undefined) {
     return [];
   }
@@ -161,6 +161,11 @@ function formatLaunchAlpha(alpha) {
   }
   if (alpha.prelaunch_eth !== undefined) {
     lines.push(`💰 Pre-launch ETH: ${escapeHtml(alpha.prelaunch_eth)} ETH`);
+  }
+  if (alpha.base_wallet_first_activity_at !== undefined) {
+    const age = formatAge(alpha.base_wallet_first_activity_at, now);
+    const isNew = now.getTime() - Date.parse(alpha.base_wallet_first_activity_at) < 24 * 60 * 60 * 1_000;
+    lines.push(`🆕 Base first observed activity: ${age}${isNew ? " ⚠️ New on Base" : ""}`);
   }
   if (alpha.initial_mint_recipients !== undefined) {
     const share = alpha.largest_initial_mint_share_percent;
