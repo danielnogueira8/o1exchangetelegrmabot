@@ -28,6 +28,7 @@
  *       factory_caller?: string,
  *       factory_caller_type?: "EOA" | "contract",
  *       prelaunch_eth?: string,
+ *       base_wallet_first_activity_at?: string,
  *       initial_mint_recipients?: number,
  *       largest_initial_mint_share_percent?: number,
  *       admin_role_granted?: boolean

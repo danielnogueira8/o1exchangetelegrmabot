@@ -81,6 +81,7 @@ test("the Telegram alert identifies a known launch source", () => {
     factory_caller: "0xC7937601a50669d3B4725d01201335ba46bc149A",
     factory_caller_type: "EOA",
     prelaunch_eth: "1.2345",
+    base_wallet_first_activity_at: "2026-08-22T11:42:00.000Z",
     initial_mint_recipients: 2,
     largest_initial_mint_share_percent: 80,
     admin_role_granted: false,
@@ -92,6 +93,7 @@ test("the Telegram alert identifies a known launch source", () => {
   assert.match(message, /🧪 <b>Launch alpha<\/b>/);
   assert.match(message, /Factory caller: <a href="https:\/\/debank.com\/profile\/0xC7937601a50669d3B4725d01201335ba46bc149A">/);
   assert.match(message, /Pre-launch ETH: 1.2345 ETH/);
+  assert.match(message, /Base first observed activity: 18m ⚠️ New on Base/);
   assert.match(message, /Initial mint: 2 recipients · largest 80%/);
   assert.match(message, /Default admin grant in launch: no/);
   assert.doesNotMatch(message, /Creator:/);

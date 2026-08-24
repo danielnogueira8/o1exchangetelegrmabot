@@ -50,6 +50,18 @@ test("B20Client discovers Base Factory launches and enriches them with market da
         return jsonResponse({ result: [b20CreatedLog({ withTimestamp: false })] });
       }
 
+      if (String(input).startsWith("https://base.blockscout.com/api?")) {
+        assert.equal(
+          String(input),
+          "https://base.blockscout.com/api?module=account&action=txlist&address=0xcaller&page=1&offset=1&sort=asc",
+        );
+        assert.ok(init?.signal);
+        return jsonResponse({
+          status: "1",
+          result: [{ timeStamp: `${Math.floor((NOW.getTime() - 18 * 60_000) / 1_000)}` }],
+        });
+      }
+
       assert.equal(
         String(input),
         `https://api.dexscreener.com/tokens/v1/base/${TOKEN_ADDRESS}`,
@@ -75,7 +87,7 @@ test("B20Client discovers Base Factory launches and enriches them with market da
 
   const tokens = await client.listTokens(8453);
 
-  assert.equal(requests.length, 8);
+  assert.equal(requests.length, 9);
   assert.deepEqual(tokens, [
     {
       chain_id: 8453,
@@ -94,6 +106,7 @@ test("B20Client discovers Base Factory launches and enriches them with market da
           factory_caller: "0xcaller",
           factory_caller_type: "EOA",
           prelaunch_eth: "30",
+          base_wallet_first_activity_at: "2026-08-22T11:42:00.000Z",
           initial_mint_recipients: 2,
           largest_initial_mint_share_percent: 80,
           admin_role_granted: true,
@@ -196,6 +209,43 @@ test("B20Client still returns a qualifying launch when optional alpha RPC calls 
 
   assert.ok(token);
   assert.equal(token.launch.alpha, undefined);
+});
+
+test("B20Client keeps direct launch alpha when Blockscout is unavailable", async () => {
+  const client = new B20Client({
+    rpcUrl: "https://base-rpc.example.test",
+    fetchImpl: async (input, init) => {
+      if (String(input) === "https://base-rpc.example.test") {
+        const request = JSON.parse(String(init?.body));
+        if (request.method === "eth_blockNumber") return jsonResponse({ result: "0x10000" });
+        if (request.method === "eth_getLogs") return jsonResponse({ result: [b20CreatedLog()] });
+        if (request.method === "eth_getTransactionByHash") return jsonResponse({ result: { from: "0xcaller" } });
+        if (request.method === "eth_getCode") return jsonResponse({ result: "0x" });
+        if (request.method === "eth_getBalance") return jsonResponse({ result: "0x0" });
+        if (request.method === "eth_getTransactionReceipt") return jsonResponse({ result: { logs: [] } });
+        assert.fail(`unexpected RPC request: ${request.method}`);
+      }
+      if (String(input).startsWith("https://base.blockscout.com/api?")) {
+        return new Response(null, { status: 503 });
+      }
+      return jsonResponse([
+        {
+          pairAddress: "0xpool",
+          baseToken: { address: TOKEN_ADDRESS, name: "B20 Example", symbol: "B20" },
+          marketCap: 150_000,
+        },
+      ]);
+    },
+  });
+
+  const [token] = await client.listTokens(8453);
+
+  assert.ok(token);
+  assert.deepEqual(token.launch.alpha, {
+    factory_caller: "0xcaller",
+    factory_caller_type: "EOA",
+    prelaunch_eth: "0",
+  });
 });
 
 /** @param {{ withTimestamp?: boolean }} [options] */
