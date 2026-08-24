@@ -1,4 +1,5 @@
 import { NotificationRejectedError } from "./notification-error.js";
+import { BASE_B20_FACTORY_SOURCE } from "./launch-sources.js";
 
 /** @typedef {import("./types.js").O1Token} O1Token */
 /** @typedef {import("./types.js").TokenActivity} TokenActivity */
@@ -111,7 +112,7 @@ export function formatTokenAlert(token, now = new Date()) {
   const chainName = CHAIN_NAMES.get(token.chain_id) ?? `Chain ${token.chain_id}`;
 
   return [
-    "🚀 <b>New o1 pair</b>",
+    formatAlertTitle(token.launch.source),
     "",
     `🪙 <b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
     `⛓️ Chain: ${escapeHtml(chainName)}`,
@@ -131,7 +132,15 @@ export function formatTokenAlert(token, now = new Date()) {
     `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
     ...formatCreator(token.launch.creator_address),
     ...formatSocialLinks(token.token),
-  ].join("\n");
+].join("\n");
+}
+
+/** @param {string | undefined} source */
+function formatAlertTitle(source) {
+  if (source?.trim() === BASE_B20_FACTORY_SOURCE) {
+    return "🚀 <b>New Base B20 launch</b>";
+  }
+  return source?.trim() ? "🚀 <b>New launch</b>" : "🚀 <b>New o1 pair</b>";
 }
 
 /** @param {string | undefined} creatorAddress */

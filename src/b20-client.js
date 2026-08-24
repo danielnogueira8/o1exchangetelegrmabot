@@ -1,5 +1,7 @@
 /** @typedef {import("./types.js").O1Token} O1Token */
 
+import { BASE_B20_FACTORY_SOURCE } from "./launch-sources.js";
+
 /**
  * @typedef {{
  *   address: string,
@@ -415,7 +417,7 @@ function tokenFromLaunch(launch, pairs, minimumMarketCapUsd) {
     launch: {
       created_at: launch.createdAt,
       pool_id: bestPair.pairAddress,
-      source: "Base B20 Factory",
+      source: BASE_B20_FACTORY_SOURCE,
     },
     market_data: {
       data_status: "fresh",

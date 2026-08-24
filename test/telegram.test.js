@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { NotificationRejectedError } from "../src/notification-error.js";
+import { BASE_B20_FACTORY_SOURCE } from "../src/launch-sources.js";
 import { formatTokenAlert, TelegramNotifier } from "../src/telegram.js";
 
 const NOW = new Date("2026-08-22T12:00:00.000Z");
@@ -75,7 +76,7 @@ test("the Telegram alert omits an absent About description", () => {
 
 test("the Telegram alert identifies a known launch source", () => {
   const b20Token = /** @type {import("../src/types.js").O1Token} */ (token());
-  b20Token.launch.source = "Base B20 Factory";
+  b20Token.launch.source = BASE_B20_FACTORY_SOURCE;
   delete b20Token.launch.creator_address;
   b20Token.launch.alpha = {
     factory_caller: "0xC7937601a50669d3B4725d01201335ba46bc149A",
@@ -89,6 +90,8 @@ test("the Telegram alert identifies a known launch source", () => {
 
   const message = formatTokenAlert(b20Token, NOW);
 
+  assert.match(message, /^🚀 <b>New Base B20 launch<\/b>/);
+  assert.doesNotMatch(message, /New o1 pair/);
   assert.match(message, /🏭 Launch source: Base B20 Factory/);
   assert.match(message, /🧪 <b>Launch alpha<\/b>/);
   assert.match(message, /Factory caller: <a href="https:\/\/debank.com\/profile\/0xC7937601a50669d3B4725d01201335ba46bc149A">/);
