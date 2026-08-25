@@ -18,10 +18,14 @@ test("NeonDatabase initializes the alert and lock tables once", async () => {
   await database.query("SELECT $1", ["first"]);
   await database.query("SELECT $1", ["second"]);
 
-  assert.equal(queries.filter(({ statement }) => statement.startsWith("CREATE TABLE")).length, 2);
+  assert.equal(queries.filter(({ statement }) => statement.startsWith("CREATE TABLE")).length, 3);
   assert.match(queries[0].statement, /CREATE TABLE IF NOT EXISTS claimed_alerts/);
   assert.match(queries[1].statement, /CREATE TABLE IF NOT EXISTS poll_locks/);
-  assert.deepEqual(queries.slice(2), [
+  assert.match(queries[2].statement, /CREATE TABLE IF NOT EXISTS token_quality_watches/);
+  assert.match(queries[3].statement, /DELETE FROM token_quality_watches/);
+  assert.match(queries[4].statement, /ALTER TABLE token_quality_watches/);
+  assert.match(queries[5].statement, /CREATE INDEX IF NOT EXISTS token_quality_watches_due_idx/);
+  assert.deepEqual(queries.slice(6), [
     { statement: "SELECT $1", parameters: ["first"] },
     { statement: "SELECT $1", parameters: ["second"] },
   ]);
@@ -46,6 +50,6 @@ test("NeonDatabase retries a concurrent schema initialization race", async () =>
 
   await database.query("SELECT 1");
 
-  assert.equal(queries.filter(({ statement }) => statement.startsWith("CREATE TABLE")).length, 3);
+  assert.equal(queries.filter(({ statement }) => statement.startsWith("CREATE TABLE")).length, 4);
   assert.deepEqual(queries.at(-1), { statement: "SELECT 1", parameters: [] });
 });

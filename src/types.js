@@ -48,7 +48,27 @@
  * }} O1Token
  *
  * @typedef {{
+ *   chain_id: number,
+ *   token_address: string,
+ *   source: string
+ * }} LaunchSource
+ *
+ * @typedef {{
+ *   type: string,
+ *   status: string,
+ *   paymentTimestamp: number
+ * }} PaidDexScreenerOrder
+ *
+ * @typedef {{
+ *   liquidityUsd: number,
+ *   marketCapUsd?: number,
+ *   oneHourVolumeUsd: number,
+ *   oneHourTrades: number
+ * }} OneHourQuality
+ *
+ * @typedef {{
  *   listTokens: (chainId: number) => Promise<O1Token[]>,
+ *   listLaunchSources?: (chainId: number) => Promise<LaunchSource[]>,
  *   getTokenDetails?: (
  *     chainId: number,
  *     tokenAddress: string,

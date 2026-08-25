@@ -6,7 +6,7 @@ import { NotificationRejectedError } from "./notification-error.js";
 /** @typedef {import("./types.js").AlertRules} AlertRules */
 /** @typedef {import("./types.js").DeliveryResult} DeliveryResult */
 
-const OPTIONAL_DETAILS_BUDGET_MS = 5_000;
+const OPTIONAL_DETAILS_TIMEOUT_MS = 1_500;
 
 /**
  * @param {number} pollStartedAt
@@ -29,6 +29,7 @@ export function calculateNextPollDelay(pollStartedAt, pollFinishedAt, intervalMs
  *     claimAlert(chainId: number, tokenAddress: string): boolean | Promise<boolean>,
  *     releaseAlert(chainId: number, tokenAddress: string): void | Promise<void>
  *   },
+ *   qualityWatchStore?: { watchToken(token: O1Token, now: Date): Promise<void> },
  *   logger: { info(...values: unknown[]): void, error(...values: unknown[]): void }
  * }} dependencies
  */
@@ -39,9 +40,9 @@ export async function runPoll({
   o1Client,
   notifier,
   alertStore,
+  qualityWatchStore,
   logger,
 }) {
-  const optionalDetailsDeadline = Date.now() + OPTIONAL_DETAILS_BUDGET_MS;
   const summary = {
     fetched: 0,
     qualified: 0,
@@ -63,6 +64,8 @@ export async function runPoll({
 
     summary.fetched += tokens.length;
 
+    /** @type {O1Token[]} */
+    const claimedTokens = [];
     for (const token of tokens) {
       if (!matchesAlertRules(token, rules, now)) {
         continue;
@@ -88,32 +91,17 @@ export async function runPoll({
         continue;
       }
 
-      let alertToken = token;
-      const optionalDetailsTimeLeft = optionalDetailsDeadline - Date.now();
-      if (
-        o1Client.getTokenDetails !== undefined &&
-        optionalDetailsTimeLeft > 0
-      ) {
-        const getTokenDetails = o1Client.getTokenDetails.bind(o1Client);
-        try {
-          const details = await withOptionalDetailsDeadline(
-            (signal) =>
-              getTokenDetails(token.chain_id, token.token.address, {
-                signal,
-              }),
-            optionalDetailsTimeLeft,
-          );
-          alertToken = withTokenDetails(token, details);
-        } catch (error) {
-          summary.errors += 1;
-          logger.error("Failed to fetch optional token details", {
-            chainId: token.chain_id,
-            tokenAddress: token.token.address,
-            error,
-          });
-        }
-      }
+      claimedTokens.push(token);
+    }
 
+    const alerts = await Promise.all(
+      claimedTokens.map(async (token) => ({
+        token,
+        alertToken: await withOptionalTokenDetails(token, o1Client, summary, logger),
+      })),
+    );
+
+    for (const { token, alertToken } of alerts) {
       /** @type {DeliveryResult} */
       let deliveryResult;
       try {
@@ -137,10 +125,50 @@ export async function runPoll({
       }
 
       summary.sent += 1;
+      if (qualityWatchStore !== undefined) {
+        try {
+          await qualityWatchStore.watchToken(alertToken, now);
+        } catch (error) {
+          summary.errors += 1;
+          logger.error("Failed to schedule one-hour token quality watch", {
+            chainId: token.chain_id,
+            tokenAddress: token.token.address,
+            error,
+          });
+        }
+      }
     }
   }
 
   return summary;
+}
+
+/**
+ * @param {O1Token} token
+ * @param {O1ClientLike} o1Client
+ * @param {{ errors: number }} summary
+ * @param {{ error(...values: unknown[]): void }} logger
+ */
+async function withOptionalTokenDetails(token, o1Client, summary, logger) {
+  if (o1Client.getTokenDetails === undefined) {
+    return token;
+  }
+  const getTokenDetails = o1Client.getTokenDetails.bind(o1Client);
+  try {
+    const details = await withOptionalDetailsDeadline(
+      (signal) => getTokenDetails(token.chain_id, token.token.address, { signal }),
+      OPTIONAL_DETAILS_TIMEOUT_MS,
+    );
+    return withTokenDetails(token, details);
+  } catch (error) {
+    summary.errors += 1;
+    logger.error("Failed to fetch optional token details", {
+      chainId: token.chain_id,
+      tokenAddress: token.token.address,
+      error,
+    });
+    return token;
+  }
 }
 
 /**

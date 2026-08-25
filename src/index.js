@@ -3,8 +3,10 @@ import "dotenv/config";
 import { loadConfig } from "./config.js";
 import { B20Client } from "./b20-client.js";
 import { runAllPolls } from "./all-polls.js";
+import { DexScreenerClient } from "./dexscreener-client.js";
 import { NeonAlertStore } from "./neon-alert-store.js";
 import { NeonDatabase } from "./neon-database.js";
+import { NeonQualityWatchStore } from "./neon-quality-watch-store.js";
 import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
 import { calculateNextPollDelay } from "./poll.js";
@@ -12,11 +14,13 @@ import { calculateNextPollDelay } from "./poll.js";
 const config = loadConfig();
 const database = new NeonDatabase(config.databaseUrl);
 const alertStore = new NeonAlertStore(database);
+const qualityWatchStore = new NeonQualityWatchStore(database);
 const o1Client = new O1Client({
   apiKey: config.o1ApiKey,
   market: config.market,
 });
 const b20Client = new B20Client();
+const dexScreenerClient = new DexScreenerClient();
 const notifier = createNotifier(config);
 
 let stopping = false;
@@ -46,6 +50,8 @@ do {
     b20Client,
     notifier,
     alertStore,
+    qualityWatchStore,
+    dexScreenerClient,
     logger: console,
   });
   console.info("Poll complete", summary);

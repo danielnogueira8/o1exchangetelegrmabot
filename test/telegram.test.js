@@ -2,8 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { NotificationRejectedError } from "../src/notification-error.js";
-import { BASE_B20_FACTORY_SOURCE } from "../src/launch-sources.js";
-import { formatTokenAlert, TelegramNotifier } from "../src/telegram.js";
+import { BASE_B20_FACTORY_SOURCE, UNKNOWN_LAUNCH_SOURCE } from "../src/launch-sources.js";
+import {
+  formatQualityConfirmation,
+  formatTokenAlert,
+  TelegramNotifier,
+} from "../src/telegram.js";
 
 const NOW = new Date("2026-08-22T12:00:00.000Z");
 
@@ -102,6 +106,39 @@ test("the Telegram alert identifies a known launch source", () => {
   assert.doesNotMatch(message, /Creator:/);
 });
 
+test("the Telegram alert uses a neutral title when a Base source lookup failed", () => {
+  const sourceUnknownToken = /** @type {import("../src/types.js").O1Token} */ (token());
+  sourceUnknownToken.launch.source = UNKNOWN_LAUNCH_SOURCE;
+
+  const message = formatTokenAlert(sourceUnknownToken, NOW);
+
+  assert.match(message, /^🚀 <b>New launch<\/b>/);
+  assert.doesNotMatch(message, /New o1 pair|Launch source:/);
+});
+
+test("a one-hour quality confirmation names the active paid DexScreener order", () => {
+  const message = formatQualityConfirmation(
+    /** @type {import("../src/types.js").O1Token} */ (token()),
+    [
+      { type: "tokenProfile", status: "approved", paymentTimestamp: 1 },
+      { type: "tokenAd", status: "processing", paymentTimestamp: 2 },
+    ],
+    {
+      liquidityUsd: 25_000,
+      marketCapUsd: 150_000,
+      oneHourVolumeUsd: 12_000,
+      oneHourTrades: 30,
+    },
+    NOW,
+  );
+
+  assert.match(message, /✅ <b>1h quality confirmation<\/b>/);
+  assert.match(message, /Active paid DexScreener: Token profile · Token ad/);
+  assert.match(message, /Liquidity: \$25,000/);
+  assert.match(message, /1h: 30 trades · \$12,000 volume/);
+  assert.match(message, /Sigma_buyBot/);
+});
+
 test("the Telegram alert omits absent or unsafe social links", () => {
   const tokenWithoutSocials = token();
   tokenWithoutSocials.token.website = "javascript:alert('unsafe')";
@@ -144,6 +181,39 @@ test("TelegramNotifier sends the alert as HTML to the configured chat", async ()
   assert.equal(body.parse_mode, "HTML");
   assert.equal(body.disable_web_page_preview, true);
   assert.equal(body.text, formatTokenAlert(token(), NOW));
+  assert.deepEqual(body.reply_markup, {
+    inline_keyboard: [[{ text: "✖️ Dismiss alert", callback_data: "dismiss-alert" }]],
+  });
+});
+
+test("TelegramNotifier gives a one-hour confirmation the same dismiss button", async () => {
+  /** @type {{ input: string, init: RequestInit | undefined }[]} */
+  const requests = [];
+  const notifier = new TelegramNotifier({
+    botToken: "test-bot-token",
+    chatId: "-100123456",
+    fetchImpl: async (input, init) => {
+      requests.push({ input: String(input), init });
+      return new Response(JSON.stringify({ ok: true, result: {} }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+
+  await notifier.sendQualityConfirmation(
+    token(),
+    [{ type: "tokenProfile", status: "approved", paymentTimestamp: 1 }],
+    {
+      liquidityUsd: 25_000,
+      marketCapUsd: 150_000,
+      oneHourVolumeUsd: 12_000,
+      oneHourTrades: 30,
+    },
+    NOW,
+  );
+
+  const body = JSON.parse(String(requests[0].init?.body));
   assert.deepEqual(body.reply_markup, {
     inline_keyboard: [[{ text: "✖️ Dismiss alert", callback_data: "dismiss-alert" }]],
   });

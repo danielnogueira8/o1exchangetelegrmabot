@@ -108,13 +108,13 @@ test("one poll enriches a new alert with optional token details", async () => {
   assert.equal(summary.sent, 1);
 });
 
-test("stalled detail lookups share one budget and fall back to base alerts", async (t) => {
+test("stalled detail lookups use individual deadlines and fall back to base alerts", async (t) => {
   t.mock.timers.enable({ apis: ["Date", "setTimeout"], now: 0 });
   const firstToken = qualifyingToken();
   const secondToken = qualifyingToken();
   secondToken.token.address = "0x5678";
-  /** @type {AbortSignal | undefined} */
-  let detailsSignal;
+  /** @type {AbortSignal[]} */
+  const detailsSignals = [];
   let detailRequests = 0;
   /** @type {string[]} */
   const sentAddresses = [];
@@ -129,7 +129,8 @@ test("stalled detail lookups share one budget and fall back to base alerts", asy
       },
       async getTokenDetails(_chainId, _tokenAddress, options) {
         detailRequests += 1;
-        detailsSignal = options?.signal;
+        assert.ok(options?.signal);
+        detailsSignals.push(options.signal);
         return new Promise(() => {});
       },
     },
@@ -156,11 +157,11 @@ test("stalled detail lookups share one budget and fall back to base alerts", asy
   ]);
 
   assert.notEqual(summary, undefined, "the poll remained stalled");
-  assert.equal(detailRequests, 1);
-  assert.equal(detailsSignal?.aborted, true);
+  assert.equal(detailRequests, 2);
+  assert.equal(detailsSignals.every((signal) => signal.aborted), true);
   assert.deepEqual(sentAddresses, ["0x1234", "0x5678"]);
   assert.equal(summary?.sent, 2);
-  assert.equal(summary?.errors, 1);
+  assert.equal(summary?.errors, 2);
 });
 
 test("a failed chain does not prevent other chains from being checked", async () => {

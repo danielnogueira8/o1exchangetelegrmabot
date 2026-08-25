@@ -1,4 +1,5 @@
 /** @typedef {import("./types.js").O1Token} O1Token */
+/** @typedef {import("./types.js").LaunchSource} LaunchSource */
 
 import { BASE_B20_FACTORY_SOURCE } from "./launch-sources.js";
 
@@ -38,6 +39,7 @@ const B20_CREATED_TOPIC =
   // keccak256("B20Created(address,uint8,string,string,uint8,bytes)") from IB20Factory.
   "0xfd9bf2730513a1709722ff379a0844dfd8f997d600693c2bcc659e188bbdba0d";
 const B20_LOOKBACK_BLOCKS = 3_600;
+const LAUNCH_SNAPSHOT_TTL_MILLISECONDS = 60_000;
 const DEXSCREENER_BATCH_SIZE = 30;
 const DEFAULT_MINIMUM_MARKET_CAP_USD = 100_000;
 const TRANSFER_TOPIC =
@@ -64,6 +66,12 @@ export class B20Client {
   /** @type {Map<string, Promise<string>>} */
   #blockTimestamps = new Map();
 
+  /** @type {{ launches: DecodedB20Launch[], expiresAt: number } | undefined} */
+  #launchSnapshot;
+
+  /** @type {Promise<DecodedB20Launch[]> | undefined} */
+  #launchSnapshotRequest;
+
   /** @param {{ rpcUrl?: string, fetchImpl?: typeof fetch, minimumMarketCapUsd?: number }} [options] */
   constructor({
     rpcUrl = BASE_RPC_URL,
@@ -84,26 +92,7 @@ export class B20Client {
       return [];
     }
 
-    const latestBlock = Number(await this.#rpc("eth_blockNumber", []));
-    if (!Number.isSafeInteger(latestBlock)) {
-      throw new Error("Base RPC returned an invalid latest block number");
-    }
-
-    const logs = await this.#rpc("eth_getLogs", [
-      {
-        address: B20_FACTORY_ADDRESS,
-        topics: [B20_CREATED_TOPIC],
-        fromBlock: toBlockTag(Math.max(0, latestBlock - B20_LOOKBACK_BLOCKS)),
-        toBlock: "latest",
-      },
-    ]);
-    if (!Array.isArray(logs)) {
-      throw new Error("Base RPC did not return B20 creation logs");
-    }
-
-    const decodedLaunches = logs
-      .map(decodeB20CreatedLog)
-      .filter((launch) => launch !== undefined);
+    const decodedLaunches = await this.#listDecodedLaunches();
     const launches = await Promise.all(
       decodedLaunches.map(async (launch) => ({
         ...launch,
@@ -137,6 +126,62 @@ export class B20Client {
         }
       }),
     );
+  }
+
+  /** @param {number} chainId @returns {Promise<LaunchSource[]>} */
+  async listLaunchSources(chainId) {
+    if (chainId !== BASE_CHAIN_ID) {
+      return [];
+    }
+    const launches = await this.#listDecodedLaunches();
+    return launches.map(({ address }) => ({
+      chain_id: BASE_CHAIN_ID,
+      token_address: address,
+      source: BASE_B20_FACTORY_SOURCE,
+    }));
+  }
+
+  /** @returns {Promise<DecodedB20Launch[]>} */
+  async #listDecodedLaunches() {
+    const cachedSnapshot = this.#launchSnapshot;
+    if (cachedSnapshot !== undefined && cachedSnapshot.expiresAt > Date.now()) {
+      return cachedSnapshot.launches;
+    }
+    if (this.#launchSnapshotRequest !== undefined) {
+      return this.#launchSnapshotRequest;
+    }
+
+    this.#launchSnapshotRequest = this.#fetchDecodedLaunches();
+    try {
+      const launches = await this.#launchSnapshotRequest;
+      this.#launchSnapshot = {
+        launches,
+        expiresAt: Date.now() + LAUNCH_SNAPSHOT_TTL_MILLISECONDS,
+      };
+      return launches;
+    } finally {
+      this.#launchSnapshotRequest = undefined;
+    }
+  }
+
+  /** @returns {Promise<DecodedB20Launch[]>} */
+  async #fetchDecodedLaunches() {
+    const latestBlock = Number(await this.#rpc("eth_blockNumber", []));
+    if (!Number.isSafeInteger(latestBlock)) {
+      throw new Error("Base RPC returned an invalid latest block number");
+    }
+    const logs = await this.#rpc("eth_getLogs", [
+      {
+        address: B20_FACTORY_ADDRESS,
+        topics: [B20_CREATED_TOPIC],
+        fromBlock: toBlockTag(Math.max(0, latestBlock - B20_LOOKBACK_BLOCKS)),
+        toBlock: "latest",
+      },
+    ]);
+    if (!Array.isArray(logs)) {
+      throw new Error("Base RPC did not return B20 creation logs");
+    }
+    return logs.map(decodeB20CreatedLog).filter((launch) => launch !== undefined);
   }
 
   /** @param {O1Token} token @param {DecodedB20Launch} launch */
