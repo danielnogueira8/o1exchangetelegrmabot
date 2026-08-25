@@ -85,9 +85,17 @@ test("B20Client discovers Base Factory launches and enriches them with market da
     },
   });
 
+  const sources = await client.listLaunchSources(8453);
   const tokens = await client.listTokens(8453);
 
   assert.equal(requests.length, 9);
+  assert.deepEqual(sources, [
+    {
+      chain_id: 8453,
+      token_address: TOKEN_ADDRESS,
+      source: "Base B20 Factory",
+    },
+  ]);
   assert.deepEqual(tokens, [
     {
       chain_id: 8453,

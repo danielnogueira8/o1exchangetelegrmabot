@@ -1,8 +1,10 @@
 import { loadConfig } from "./config.js";
 import { B20Client } from "./b20-client.js";
 import { runAllPolls } from "./all-polls.js";
+import { DexScreenerClient } from "./dexscreener-client.js";
 import { NeonAlertStore } from "./neon-alert-store.js";
 import { NeonDatabase } from "./neon-database.js";
+import { NeonQualityWatchStore } from "./neon-quality-watch-store.js";
 import { NeonPollLock } from "./neon-poll-lock.js";
 import { createNotifier } from "./notifier-factory.js";
 import { O1Client } from "./o1-client.js";
@@ -52,6 +54,7 @@ export function createCronHandler({
       const config = loadConfig(environment);
       const activeDatabase = database ?? new NeonDatabase(config.databaseUrl);
       const alertStore = new NeonAlertStore(activeDatabase);
+      const qualityWatchStore = new NeonQualityWatchStore(activeDatabase);
       pollLock = new NeonPollLock(activeDatabase);
       lockOwner = await pollLock.tryAcquire();
       if (lockOwner === null) {
@@ -62,6 +65,7 @@ export function createCronHandler({
       const activeO1Client =
         o1Client ?? new O1Client({ apiKey: config.o1ApiKey, market: config.market });
       const activeB20Client = b20Client ?? new B20Client();
+      const dexScreenerClient = new DexScreenerClient();
       const activeNotifier = notifier ?? createNotifier(config, logger);
       const summary = await runAllPolls({
         chainIds: config.chainIds,
@@ -71,6 +75,8 @@ export function createCronHandler({
         b20Client: activeB20Client,
         notifier: activeNotifier,
         alertStore,
+        qualityWatchStore,
+        dexScreenerClient,
         logger,
       });
 

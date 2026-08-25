@@ -15,6 +15,8 @@ A small Node.js service that watches new o1 Launchpad pairs and sends one Telegr
 - Labels native assets as **Base B20 Factory** when that launch source is known
 - Adds Website, X, and Telegram links when they are published in the token's o1 details
 - Adds a **Dismiss alert** button that deletes that alert message when tapped
+- Fetches optional token details concurrently, with a 1.5-second limit per token, so a slow detail lookup cannot hold later alerts back
+- Rechecks each delivered alert after one hour and sends a confirmation only when DexScreener reports both an active paid order and sustained market health
 - Atomically claims each alert before delivery so overlapping or retried runs cannot send duplicates
 - Keeps an alert claimed after an ambiguous Telegram failure, favoring no duplicate message over an automatic retry
 - Releases the claim after an explicit Telegram rejection so a later poll can retry it
@@ -110,6 +112,12 @@ The included GitHub workflow calls `https://o1exchangetelegrmabot.vercel.app/api
 No extra key or environment variable is needed. On each scheduled run, the bot reads `B20Created` events from [Base's canonical B20 Factory](https://github.com/base/base-std/blob/main/src/StdPrecompiles.sol), enriches only those assets with live market data, then alerts only when an asset is under 24 hours old, has fresh data, and has at least an actual **$100,000 market cap**. B20 volume and FDV do not qualify an alert. o1-indexed tokens retain their separate `$10,000` 24-hour-volume-or-`$50,000`-market-cap rule. B20 alerts include `🏭 Launch source: Base B20 Factory`. The event establishes the protocol-level source; it cannot reliably identify which third-party website submitted the factory call, so no frontend is claimed when it is unknown.
 
 When the Base RPC has the data, a B20 alert also includes on-chain launch alpha: the factory caller and whether it is an EOA or contract, its ETH balance immediately before the launch block, the number and concentration of recipients in the launch transaction's initial mint, and whether that transaction granted the default admin role. The bot also uses Blockscout's Base transaction index to show the wallet's first observed Base activity and flags it when under 24 hours old. These are informational only: a missing historical balance, receipt, or indexer signal never prevents an alert. This is not a wallet's cryptographic creation time and does not account for activity or funding on other chains.
+
+### One-hour quality confirmation
+
+Every delivered alert is saved for a one-hour quality check. At the next scheduled run after that hour, the bot calls DexScreener's paid-orders endpoint and live token-pairs endpoint. It sends a separate `✅ 1h quality confirmation` only if the token has an active paid DexScreener order and still has at least `$10,000` liquidity, `20` one-hour trades, plus either `$10,000` one-hour volume or a `$50,000` market cap. If DexScreener returns multiple pools, the strongest pool that meets all of those rules is used. A token that has faded or lacks a paid order receives no confirmation and is removed from the watch list. An unavailable DexScreener request is retried; an ambiguous Telegram delivery failure remains claimed to avoid duplicate confirmations, while an explicit Telegram rejection can be retried. This keeps the initial signal fast while making the follow-up deliberately stricter.
+
+The title is source-aware: only o1 API launches display `🚀 New o1 pair`; Base canonical-factory launches display `🚀 New Base B20 launch`, including when they are also indexed by o1. If the Base source lookup is temporarily unavailable, a Base alert uses the neutral `🚀 New launch` title rather than claiming an o1 origin.
 
 To enable the dismiss button, register `https://o1exchangetelegrmabot.vercel.app/api/telegram` as the bot's Telegram webhook with the same `TELEGRAM_WEBHOOK_SECRET`. After the Vercel deployment is ready, run this from a shell where `TELEGRAM_BOT_TOKEN` and `TELEGRAM_WEBHOOK_SECRET` are set:
 

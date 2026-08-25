@@ -56,6 +56,8 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
   const recordedClaims = [];
   /** @type {string[]} */
   const sentAddresses = [];
+  /** @type {string[]} */
+  const watchedAddresses = [];
   /** @type {string | undefined} */
   let lockOwner;
   /** @type {string | undefined} */
@@ -78,6 +80,13 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
         if (statement.startsWith("INSERT INTO claimed_alerts")) {
           recordedClaims.push(`${parameters[0]}:${parameters[1]}`);
           return [{ chain_id: 8453 }];
+        }
+        if (statement.startsWith("INSERT INTO token_quality_watches")) {
+          watchedAddresses.push(`${parameters[0]}:${parameters[1]}`);
+          return [];
+        }
+        if (statement.startsWith("SELECT chain_id, token_address, token_payload")) {
+          return [];
         }
         if (statement.startsWith("DELETE FROM poll_locks")) {
           releasedOwner = /** @type {string} */ (parameters[1]);
@@ -116,6 +125,7 @@ test("an authorized Vercel cron invocation runs one live poll", async () => {
   assert.equal(response.status, 200);
   assert.deepEqual(sentAddresses, ["0x1234"]);
   assert.deepEqual(recordedClaims, ["8453:0x1234"]);
+  assert.deepEqual(watchedAddresses, ["8453:0x1234"]);
   assert.ok(lockOwner);
   assert.equal(releasedOwner, lockOwner);
   assert.deepEqual(await response.json(), {

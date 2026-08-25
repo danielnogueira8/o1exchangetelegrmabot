@@ -18,6 +18,21 @@ const SCHEMA_STATEMENTS = [
     owner_token TEXT NOT NULL,
     expires_at TIMESTAMPTZ NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS token_quality_watches (
+    chain_id INTEGER NOT NULL,
+    token_address TEXT NOT NULL,
+    token_payload JSONB NOT NULL,
+    check_after TIMESTAMPTZ NOT NULL,
+    reviewed_at TIMESTAMPTZ,
+    confirmation_claimed_at TIMESTAMPTZ,
+    PRIMARY KEY (chain_id, token_address)
+  )`,
+  `DELETE FROM token_quality_watches
+    WHERE reviewed_at IS NOT NULL`,
+  `ALTER TABLE token_quality_watches
+    ADD COLUMN IF NOT EXISTS confirmation_claimed_at TIMESTAMPTZ`,
+  `CREATE INDEX IF NOT EXISTS token_quality_watches_due_idx
+    ON token_quality_watches (check_after)`,
 ];
 const MAXIMUM_SCHEMA_INITIALIZATION_ATTEMPTS = 3;
 const SCHEMA_RETRY_DELAY_MS = 50;

@@ -1,8 +1,10 @@
 import { NotificationRejectedError } from "./notification-error.js";
-import { BASE_B20_FACTORY_SOURCE } from "./launch-sources.js";
+import { BASE_B20_FACTORY_SOURCE, UNKNOWN_LAUNCH_SOURCE } from "./launch-sources.js";
 
 /** @typedef {import("./types.js").O1Token} O1Token */
 /** @typedef {import("./types.js").TokenActivity} TokenActivity */
+/** @typedef {import("./types.js").OneHourQuality} OneHourQuality */
+/** @typedef {import("./types.js").PaidDexScreenerOrder} PaidDexScreenerOrder */
 /** @typedef {"1h" | "6h" | "24h"} ActivityPeriod */
 
 const CHAIN_NAMES = new Map([
@@ -82,6 +84,38 @@ export class TelegramNotifier {
 
     return /** @type {const} */ ("delivered");
   }
+
+  /** @param {O1Token} token @param {PaidDexScreenerOrder[]} orders @param {OneHourQuality} quality @param {Date} [now] */
+  async sendQualityConfirmation(token, orders, quality, now = new Date()) {
+    const response = await this.#fetch(
+      `https://api.telegram.org/bot${this.#botToken}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          chat_id: this.#chatId,
+          text: formatQualityConfirmation(token, orders, quality, now),
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: "✖️ Dismiss alert", callback_data: DISMISS_ALERT_CALLBACK_DATA }],
+            ],
+          },
+        }),
+      },
+    );
+    if (!response.ok) {
+      throw new NotificationRejectedError(
+        `Telegram rejected the request with status ${response.status}`,
+      );
+    }
+    const payload = /** @type {{ ok?: boolean }} */ (await response.json());
+    if (payload.ok !== true) {
+      throw new NotificationRejectedError("Telegram rejected the request payload");
+    }
+    return /** @type {const} */ ("delivered");
+  }
 }
 
 export class ConsoleNotifier {
@@ -99,6 +133,12 @@ export class ConsoleNotifier {
    */
   async sendTokenAlert(token, now = new Date()) {
     this.#logger.info(`[dry-run]\n${formatTokenAlert(token, now)}`);
+    return /** @type {const} */ ("previewed");
+  }
+
+  /** @param {O1Token} token @param {PaidDexScreenerOrder[]} orders @param {OneHourQuality} quality @param {Date} [now] */
+  async sendQualityConfirmation(token, orders, quality, now = new Date()) {
+    this.#logger.info(`[dry-run]\n${formatQualityConfirmation(token, orders, quality, now)}`);
     return /** @type {const} */ ("previewed");
   }
 }
@@ -132,13 +172,41 @@ export function formatTokenAlert(token, now = new Date()) {
     `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
     ...formatCreator(token.launch.creator_address),
     ...formatSocialLinks(token.token),
-].join("\n");
+  ].join("\n");
+}
+
+/** @param {O1Token} token @param {PaidDexScreenerOrder[]} orders @param {OneHourQuality} quality @param {Date} [now] */
+export function formatQualityConfirmation(token, orders, quality, now = new Date()) {
+  const orderTypes = [...new Set(orders.map(({ type }) => readableOrderType(type)))];
+  return [
+    "✅ <b>1h quality confirmation</b>",
+    "",
+    `🪙 <b>${escapeHtml(token.token.name)} (${escapeHtml(token.token.symbol)})</b>`,
+    `⏱️ Tracked: ${formatAge(token.launch.created_at, now)} ago`,
+    `💳 Active paid DexScreener: ${escapeHtml(orderTypes.join(" · "))}`,
+    `💧 Liquidity: ${formatWholeUsd(quality.liquidityUsd)}`,
+    `⚡ 1h: ${quality.oneHourTrades.toLocaleString("en-US")} trades · ${formatWholeUsd(quality.oneHourVolumeUsd)} volume`,
+    `🛒 Token: ${formatLink(token.token.address, sigmaBuyUrl(token.token.address))}`,
+  ].join("\n");
+}
+
+/** @param {string} type */
+function readableOrderType(type) {
+  return new Map([
+    ["tokenProfile", "Token profile"],
+    ["communityTakeover", "Community takeover"],
+    ["tokenAd", "Token ad"],
+    ["trendingBarAd", "Trending bar ad"],
+  ]).get(type) ?? type;
 }
 
 /** @param {string | undefined} source */
 function formatAlertTitle(source) {
   if (source?.trim() === BASE_B20_FACTORY_SOURCE) {
     return "🚀 <b>New Base B20 launch</b>";
+  }
+  if (source?.trim() === UNKNOWN_LAUNCH_SOURCE) {
+    return "🚀 <b>New launch</b>";
   }
   return source?.trim() ? "🚀 <b>New launch</b>" : "🚀 <b>New o1 pair</b>";
 }
@@ -154,7 +222,9 @@ function formatCreator(creatorAddress) {
 /** @param {string | undefined} source */
 function formatLaunchSource(source) {
   const value = source?.trim();
-  return value ? [`🏭 Launch source: ${escapeHtml(value)}`] : [];
+  return value && value !== UNKNOWN_LAUNCH_SOURCE
+    ? [`🏭 Launch source: ${escapeHtml(value)}`]
+    : [];
 }
 
 /** @param {O1Token["launch"]["alpha"]} alpha @param {Date} now */
